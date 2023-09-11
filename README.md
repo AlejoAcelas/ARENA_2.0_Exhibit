@@ -1,4 +1,6 @@
-This GitHub repo hosts the exercises and Streamlit pages for the ARENA 2.0 program.
+This is a frozen copy of the ARENA 2.0 GitHub repo containing the exercises we completed (my pair for the day and me) as part of the in-person version of the [ARENA program](https://www.arena.education/). The solutions for some days of the curriculum are missing as I wasn't dilligent enough committing our progress every day. 
+
+# Description of the Curriculum
 
 You can find a summary of each of the chapters below. For more detailed information (including the different ways you can access the exercises), click on the links in the chapter headings.
 
