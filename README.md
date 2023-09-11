@@ -1,4 +1,4 @@
-This is a frozen copy of the ARENA 2.0 GitHub repo containing the exercises we completed (my pair for the day and me) as part of the in-person version of the [ARENA program](https://www.arena.education/). The solutions for some days of the curriculum are missing as I wasn't dilligent enough committing our progress every day. 
+This is a frozen copy of the ARENA 2.0 GitHub repo containing the exercises we completed (my pair for the day and me) as part of the in-person version of the [ARENA program](https://www.arena.education/). The code we contributed can be found in the `answers.py` within the exercises folder for each chapter. The solutions for some days of the curriculum are missing as I wasn't dilligent enough committing our progress every day. 
 
 # Description of the Curriculum
 
