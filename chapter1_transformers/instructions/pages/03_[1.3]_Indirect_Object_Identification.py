@@ -73,7 +73,7 @@ At a surface level, these exercises are designed to take you through the indirec
 
 Here is a rough conceptual graph showing all the different things you should be thinking about when going through these exercises, and how they relate to both of these goals, as well all the `transformerlens` tools which will help you.
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/ioi-map-newer.png" width="1100">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/ioi-map-simpler.png" width="1100">
 
 A key idea to have in mind during these exercises is the spectrum from simpler, more exploratory tools to more rigoruous, complex tools. On the far left, you have something like inspecting attention patterns, which can give a decent (but sometimes misleading) picture of what an attention head is doing. These should be some of the first tools you reach for, and you should be using them a lot even before you have concrete hypotheses about a circuit. On the far right, you have something like path patching, which is a pretty rigorous and effortful tool that is best used when you already have reasonably concrete hypotheses about a circuit. As we go through the exercises, we'll transition from left to right along this spectrum.
 
@@ -132,7 +132,7 @@ This is a fine first-pass understanding of how the circuit works. A few other fe
 * If for some reason you forget to ask the question "does anyone have a name that isn't `" John"`, and isn't at the 4th position in the sequence?", then you'll have another chance to do this.
     * These are *(Backup Name Mover Heads)*
     * Their existance might be partly because transformers are trained with **dropout**. This can make them "forget" things, so it's important to have a backup method for recovering that information!
-* You want to avoid overconfidence, so you also ask the question "does anyone have a name that isn't `" John"`, and isn't at the 4th position in the sequence?" another time, in order to ***anti-***predict the response that you get from this question. *(negative name mover heads)*
+* You want to avoid overconfidence, so you also ask the question "does anyone have a name that isn't `" John"`, and isn't at the 4th position in the sequence?" another time, in order to *anti-*predict the response that you get from this question. *(negative name mover heads)*
     * Yes, this is as weird as it sounds! The authors speculate that these heads "hedge" the predictions, avoiding high cross-entropy loss when making mistakes.
 
 </details>
@@ -147,7 +147,7 @@ This is a fine first-pass understanding of how the circuit works. A few other fe
 <details>
 <summary>Diagram 2 (complex)</summary>
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/ioi-main-full-d.png" width="1250">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/ioi-main-full-corrected.png" width="1250">
 
 </details>
 
@@ -282,16 +282,13 @@ The first step is to load in our model, GPT-2 Small, a 12 layer and 80M paramete
 
 
 ```python
-
-if MAIN:
-    model = HookedTransformer.from_pretrained(
-        "gpt2-small",
-        center_unembed=True,
-        center_writing_weights=True,
-        fold_ln=True,
-        refactor_factored_attn_matrices=True,
-    )
-
+model = HookedTransformer.from_pretrained(
+    "gpt2-small",
+    center_unembed=True,
+    center_writing_weights=True,
+    fold_ln=True,
+    refactor_factored_attn_matrices=True,
+)
 ```
 
 <details>
@@ -299,7 +296,7 @@ if MAIN:
 
 This argument means we redefine the matrices $W_Q$, $W_K$, $W_V$ and $W_O$ in the model (without changing the model's actual behaviour).
 
-For example, we know that instead of working with $W_Q$ and $W_K$ individually, the only matrix we actually need to use in the model is the low-rank matrix $W_Q W_K^T$ (note that I'm using the convention of matrix multiplication on the right, which matches the code in transformerlens and previous exercises in this series, but doesn't match Anthropic's Mathematical Frameworks paper). So if we perform singular value decomposition $W_Q W_K^T = U S V^T$, then we see that we can just as easily define $W_Q = U \sqrt{S}$ and $W_K = $V \sqrt{S}$ and use these instead. This means that $W_Q$ and $W_K$ both have orthogonal columns with matching norms. You can investigate this yourself (e.g. using the code below). This is arguably a more interpretable setup, because now there's no obvious asymmetry between the keys and queries.
+For example, we know that instead of working with $W_Q$ and $W_K$ individually, the only matrix we actually need to use in the model is the low-rank matrix $W_Q W_K^T$ (note that I'm using the convention of matrix multiplication on the right, which matches the code in transformerlens and previous exercises in this series, but doesn't match Anthropic's Mathematical Frameworks paper). So if we perform singular value decomposition $W_Q W_K^T = U S V^T$, then we see that we can just as easily define $W_Q = U \sqrt{S}$ and $W_K = V \sqrt{S}$ and use these instead. This means that $W_Q$ and $W_K$ both have orthogonal columns with matching norms. You can investigate this yourself (e.g. using the code below). This is arguably a more interpretable setup, because now there's no obvious asymmetry between the keys and queries.
 
 There's also some fiddlyness with how biases are handled in this factorisation, which is why the comments above don't hold absolutely (see the documnentation for more info).
 
@@ -337,12 +334,9 @@ Note: If we were being careful, we'd want to run the model on a range of prompts
 # Here is where we test on a single prompt
 # Result: 70% probability on Mary, as we expect
 
-
-if MAIN:
-    example_prompt = "After John and Mary went to the store, John gave a bottle of milk to"
-    example_answer = " Mary"
-    utils.test_prompt(example_prompt, example_answer, model, prepend_bos=True)
-
+example_prompt = "After John and Mary went to the store, John gave a bottle of milk to"
+example_answer = " Mary"
+utils.test_prompt(example_prompt, example_answer, model, prepend_bos=True)
 ```
 
 We now want to find a reference prompt to run the model on. Even though our ultimate goal is to reverse engineer how this behaviour is done in general, often the best way to start out in mechanistic interpretability is by zooming in on a concrete example and understanding it in detail, and only *then* zooming out and verifying that our analysis generalises. In section 3, we'll work with a dataset similar to the one used by the paper authors, but this probably wouldn't be the first thing we reached for if we were just doing initial investigations.
@@ -359,49 +353,41 @@ Tokens are a *massive* headache and are one of the most annoying things about re
 
 
 ```python
+prompt_format = [
+    "When John and Mary went to the shops,{} gave the bag to",
+    "When Tom and James went to the park,{} gave the ball to",
+    "When Dan and Sid went to the shops,{} gave an apple to",
+    "After Martin and Amy went to the park,{} gave a drink to",
+]
+name_pairs = [
+    (" John", " Mary"),
+    (" Tom", " James"),
+    (" Dan", " Sid"),
+    (" Martin", " Amy"),
+]
 
-if MAIN:
-    prompt_format = [
-        "When John and Mary went to the shops,{} gave the bag to",
-        "When Tom and James went to the park,{} gave the ball to",
-        "When Dan and Sid went to the shops,{} gave an apple to",
-        "After Martin and Amy went to the park,{} gave a drink to",
-    ]
-    name_pairs = [
-        (" Mary", " John"),
-        (" Tom", " James"),
-        (" Dan", " Sid"),
-        (" Martin", " Amy"),
-    ]
-    
-    # Define 8 prompts, in 4 groups of 2 (with adjacent prompts having answers swapped)
-    prompts = [
-        prompt.format(name) 
-        for (prompt, names) in zip(prompt_format, name_pairs) for name in names[::-1] 
-    ]
-    # Define the answers for each prompt, in the form (correct, incorrect)
-    answers = [names[::i] for names in name_pairs for i in (1, -1)]
-    # Define the answer tokens (same shape as the answers)
-    answer_tokens = t.concat([
-        model.to_tokens(names, prepend_bos=False).T for names in answers
-    ])
-    
-    rprint(prompts)
-    rprint(answers)
-    rprint(answer_tokens)
+# Define 8 prompts, in 4 groups of 2 (with adjacent prompts having answers swapped)
+prompts = [
+    prompt.format(name) 
+    for (prompt, names) in zip(prompt_format, name_pairs) for name in names[::-1] 
+]
+# Define the answers for each prompt, in the form (correct, incorrect)
+answers = [names[::i] for names in name_pairs for i in (1, -1)]
+# Define the answer tokens (same shape as the answers)
+answer_tokens = t.concat([
+    model.to_tokens(names, prepend_bos=False).T for names in answers
+])
 
-```
+rprint(prompts)
+rprint(answers)
+rprint(answer_tokens)
 
-```python
+table = Table("Prompt", "Correct", "Incorrect", title="Prompts & Answers:")
 
-if MAIN:
-    table = Table("Prompt", "Correct", "Incorrect", title="Prompts & Answers:")
-    
-    for prompt, answer in zip(prompts, answers):
-        table.add_row(prompt, repr(answer[0]), repr(answer[1]))
-    
-    rprint(table)
+for prompt, answer in zip(prompts, answers):
+    table.add_row(prompt, repr(answer[0]), repr(answer[1]))
 
+rprint(table)
 ```
 
 <details>
@@ -431,14 +417,11 @@ We now run the model on these prompts and use `run_with_cache` to get both the l
 
 
 ```python
-
-if MAIN:
-    tokens = model.to_tokens(prompts, prepend_bos=True)
-    # Move the tokens to the GPU
-    tokens = tokens.to(device)
-    # Run the model and cache all activations
-    original_logits, cache = model.run_with_cache(tokens)
-
+tokens = model.to_tokens(prompts, prepend_bos=True)
+# Move the tokens to the GPU
+tokens = tokens.to(device)
+# Run the model and cache all activations
+original_logits, cache = model.run_with_cache(tokens)
 ```
 
 We'll later be evaluating how model performance differs upon performing various interventions, so it's useful to have a metric to measure model performance. Our metric here will be the **logit difference**, the difference in logit between the indirect object's name and the subject's name (eg, `logit(Mary) - logit(John)`).
@@ -472,9 +455,25 @@ def logits_to_ave_logit_diff(
     pass
 
 
-if MAIN:
-    tests.test_logits_to_ave_logit_diff(logits_to_ave_logit_diff)
+tests.test_logits_to_ave_logit_diff(logits_to_ave_logit_diff)
 
+original_per_prompt_diff = logits_to_ave_logit_diff(original_logits, answer_tokens, per_prompt=True)
+print("Per prompt logit difference:", original_per_prompt_diff)
+original_average_logit_diff = logits_to_ave_logit_diff(original_logits, answer_tokens)
+print("Average logit difference:", original_average_logit_diff)
+
+cols = [
+    "Prompt", 
+    Column("Correct", style="rgb(0,200,0) bold"), 
+    Column("Incorrect", style="rgb(255,0,0) bold"), 
+    Column("Logit Difference", style="bold")
+]
+table = Table(*cols, title="Logit differences")
+
+for prompt, answer, logit_diff in zip(prompts, answers, original_per_prompt_diff):
+    table.add_row(prompt, repr(answer[0]), repr(answer[1]), f"{logit_diff.item():.3f}")
+
+rprint(table)
 ```
 
 <details>
@@ -504,34 +503,6 @@ def logits_to_ave_logit_diff(
 ```
 </details>
 
-
-```python
-
-if MAIN:
-    original_per_prompt_diff = logits_to_ave_logit_diff(original_logits, answer_tokens, per_prompt=True)
-    print("Per prompt logit difference:", original_per_prompt_diff)
-    original_average_logit_diff = logits_to_ave_logit_diff(original_logits, answer_tokens)
-    print("Average logit difference:", original_average_logit_diff)
-
-```
-
-```python
-
-if MAIN:
-    cols = [
-        "Prompt", 
-        Column("Correct", style="rgb(0,200,0) bold"), 
-        Column("Incorrect", style="rgb(255,0,0) bold"), 
-        Column("Logit Difference", style="bold")
-    ]
-    table = Table(*cols, title="Logit differences")
-    
-    for prompt, answer, logit_diff in zip(prompts, answers, original_per_prompt_diff):
-        table.add_row(prompt, repr(answer[0]), repr(answer[1]), f"{logit_diff.item():.3f}")
-    
-    rprint(table)
-
-```
 
 ## Brainstorm What's Actually Going On
 
@@ -632,15 +603,27 @@ Logit difference is actually a *really* nice and elegant metric and is a particu
 
 The logits are much nicer and easier to understand, as noted above. However, the model is trained to optimize the cross-entropy loss (the average of log probability of the correct token). This means it does not directly optimize the logits, and indeed if the model adds an arbitrary constant to every logit, the log probabilities are unchanged.
 
-But `log_probs == logits.log_softmax(dim=-1) == logits - logsumexp(logits)`, and so `log_probs(" Mary") - log_probs(" John") = logits(" Mary") - logits(" John")` - the ability to add an arbitrary constant cancels out!
+But we have:
+
+```
+log_probs == logits.log_softmax(dim=-1) == logits - logsumexp(logits)
+```
+
+and so:
+
+```
+log_probs(" Mary") - log_probs(" John") = logits(" Mary") - logits(" John")
+```
+
+- the ability to add an arbitrary constant cancels out!
 
 <details>
 <summary>Technical details (if this equivalence doesn't seem obvious to you)</summary>
 
-Let $\underline{\textbf{x}}$ be the logits, $\underline{\textbf{L}}$ be the log probs, and $\underline{\textbf{p}}$ be the probs. Then we have the following relations:
+Let $\vec{\textbf{x}}$ be the logits, $\vec{\textbf{L}}$ be the log probs, and $\vec{\textbf{p}}$ be the probs. Then we have the following relations:
 
 $$
-p_i = \operatorname{softmax}(\underline{\textbf{x}})_i = \frac{e^{x_i}}{\sum_{i=1}^n e^{x_i}}
+p_i = \operatorname{softmax}(\vec{\textbf{x}})_i = \frac{e^{x_i}}{\sum_{i=1}^n e^{x_i}}
 $$
 
 and:
@@ -652,7 +635,7 @@ $$
 Combining these, we get:
 
 $$
-L_i = \log \frac{e^{x_i}}{\sum_{i=1}^n e^{x_i}} = x_i - \log \sum_{i=1}^n e^{x_i}
+L_i = \log \frac{e^{x_i}}{\sum_{k=1}^n e^{x_k}} = x_i - \log \sum_{k=1}^n e^{x_k}
 $$
 
 Notice that the sum term on the right hand side is the same for all $i$, so we get:
@@ -693,33 +676,29 @@ $$
 \text{output} = x^T W_U
 $$
 
-Now, remember that we want the logit diff, which is $output_{IO} - output_{S}$ (the difference between the logits for our indirect object and subject). We can write this as:
+Now, remember that we want the logit diff, which is $\text{output}_{IO} - \text{output}_{S}$ (the difference between the logits for our indirect object and subject). We can write this as:
 
 $$
 \text{logit diff} = (x^T W_U)_{IO} - (x^T W_U)_{S} = x^T (u_{IO} - u_{S})
 $$
 
-where $u_{IO}$ and $u_S$ are the columns of the unembedding matrix $W_U$ corresponding to the indirect object and subject tokens respectively.
+where $u_{IO}$ and $u_S$ are the **columns of the unembedding matrix** $W_U$ corresponding to the indirect object and subject tokens respectively.
 
-To summarize, we've written the logit diff as a dot product between the vector in the residual stream and a constant vector (which is a function of the model's unembedding matrix). We call this vector $u_{IO} - u_{S}$ the **logit difference direction** (because it "points in the direction of largest logit difference"). To put it another way, if $x$ is a vector of fixed magnitude, then it maximises the logit difference when it is pointing in the same direction as the vector $u_{IO} - u_{S}$. We use the term "projection" synonymously with "dot product" here.
+To summarize, we've written the logit diff as a dot product between the vector in the residual stream and a constant vector (which is a function of the model's unembedding matrix). We call this vector $u_{IO} - u_{S}$ the **logit difference direction** (because it *"points in the direction of largest logit difference"*). To put it another way, if $x$ is a vector of fixed magnitude, then it maximises the logit difference when it is pointing in the same direction as the vector $u_{IO} - u_{S}$. We use the term "projection" synonymously with "dot product" here.
 
 (If you've completed the exercise where we interpret a transformer on balanced / unbalanced bracket strings, this is basically the same principle. The only difference here is that we actually have a much larger unembedding vocabulary than just the classifications `{balanced, unbalanced}`, but since we're only interested in comparing the model's prediction for IO vs S, and the logits for these two tokens are usually larger than most others, this method is still well-justified).
 </details>
-
 
 We use `model.tokens_to_residual_directions` to map the answer tokens to that direction, and then convert this to a logit difference direction for each batch
 
 
 ```python
+answer_residual_directions: Float[Tensor, "batch 2 d_model"] = model.tokens_to_residual_directions(answer_tokens)
+print("Answer residual directions shape:", answer_residual_directions.shape)
 
-if MAIN:
-    answer_residual_directions: Float[Tensor, "batch 2 d_model"] = model.tokens_to_residual_directions(answer_tokens)
-    print("Answer residual directions shape:", answer_residual_directions.shape)
-    
-    correct_residual_directions, incorrect_residual_directions = answer_residual_directions.unbind(dim=1)
-    logit_diff_directions: Float[Tensor, "batch d_model"] = correct_residual_directions - incorrect_residual_directions
-    print(f"Logit difference directions shape:", logit_diff_directions.shape)
-
+correct_residual_directions, incorrect_residual_directions = answer_residual_directions.unbind(dim=1)
+logit_diff_directions: Float[Tensor, "batch d_model"] = correct_residual_directions - incorrect_residual_directions
+print(f"Logit difference directions shape:", logit_diff_directions.shape)
 ```
 
 <details>
@@ -728,6 +707,13 @@ if MAIN:
 If you haven't seen type annotations being used in this way, I'd encourage it, because they're pretty handy! You can keep track of tensor sizes without worrying about re-printing everything (this is especially useful if you're working in a python file in VSCode rather than a notebook, since in a notebook it's fine to just leave cell output there as a reference). It's also handy for your typechecker, if you're using VSCode.
 
 Also note the use of `jaxtyping`, this is a better-maintained and [improved](https://github.com/nerfstudio-project/nerfstudio/issues/1171) version of the `tensortyping` library but works in basically the same way - you can see their documentation page [here](https://github.com/google/jaxtyping).
+
+Note - instead of doing this, you might prefer something like:
+
+```python
+answer_residual_directions = model.tokens_to_residual_directions(answer_tokens)
+# shape (batch, 2, d_model)
+```
 </details>
 
 To verify that this works, we can apply this to the final residual stream for our cached prompts (after applying LayerNorm scaling) and verify that we get the same answer.
@@ -759,25 +745,23 @@ The code below does the following:
 ```python
 # cache syntax - resid_post is the residual stream at the end of the layer, -1 gets the final layer. The general syntax is [activation_name, layer_index, sub_layer_type]. 
 
-if MAIN:
-    final_residual_stream: Float[Tensor, "batch seq d_model"] = cache["resid_post", -1]
-    print(f"Final residual stream shape: {final_residual_stream.shape}")
-    final_token_residual_stream: Float[Tensor, "batch d_model"] = final_residual_stream[:, -1, :]
-    
-    # Apply LayerNorm scaling (to just the final sequence position)
-    # pos_slice is the subset of the positions we take - here the final token of each prompt
-    scaled_final_token_residual_stream = cache.apply_ln_to_stack(final_token_residual_stream, layer=-1, pos_slice=-1)
-    
-    average_logit_diff = einops.einsum(
-        scaled_final_token_residual_stream, logit_diff_directions,
-        "batch d_model, batch d_model ->"
-    ) / len(prompts)
-    
-    print(f"Calculated average logit diff: {average_logit_diff:.10f}")
-    print(f"Original logit difference:     {original_average_logit_diff:.10f}")
-    
-    t.testing.assert_close(average_logit_diff, original_average_logit_diff)
+final_residual_stream: Float[Tensor, "batch seq d_model"] = cache["resid_post", -1]
+print(f"Final residual stream shape: {final_residual_stream.shape}")
+final_token_residual_stream: Float[Tensor, "batch d_model"] = final_residual_stream[:, -1, :]
 
+# Apply LayerNorm scaling (to just the final sequence position)
+# pos_slice is the subset of the positions we take - here the final token of each prompt
+scaled_final_token_residual_stream = cache.apply_ln_to_stack(final_token_residual_stream, layer=-1, pos_slice=-1)
+
+average_logit_diff = einops.einsum(
+    scaled_final_token_residual_stream, logit_diff_directions,
+    "batch d_model, batch d_model ->"
+) / len(prompts)
+
+print(f"Calculated average logit diff: {average_logit_diff:.10f}")
+print(f"Original logit difference:     {original_average_logit_diff:.10f}")
+
+t.testing.assert_close(average_logit_diff, original_average_logit_diff)
 ```
 
 ## Logit Lens
@@ -813,13 +797,38 @@ def residual_stack_to_logit_diff(
     pass
 
 
-if MAIN:
-    t.testing.assert_close(
-        residual_stack_to_logit_diff(final_token_residual_stream, cache),
-        original_average_logit_diff
-    )
-
+t.testing.assert_close(
+    residual_stack_to_logit_diff(final_token_residual_stream, cache),
+    original_average_logit_diff
+)
 ```
+
+<details>
+<summary>Solution</summary>
+
+
+```python
+def residual_stack_to_logit_diff(
+    residual_stack: Float[Tensor, "... batch d_model"], 
+    cache: ActivationCache,
+    logit_diff_directions: Float[Tensor, "batch d_model"] = logit_diff_directions,
+) -> Float[Tensor, "..."]:
+    '''
+    Gets the avg logit difference between the correct and incorrect answer for a given 
+    stack of components in the residual stream.
+    '''
+    # SOLUTION
+    batch_size = residual_stack.size(-2)
+    scaled_residual_stack = cache.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=-1)
+    return einops.einsum(
+        scaled_residual_stack, logit_diff_directions,
+        "... batch d_model, batch d_model -> ..."
+    ) / batch_size
+
+
+# Test function by checking that it gives the same result as the original logit difference
+```
+</details>
 
 Once you have the solution, you can plot your results.
 
@@ -828,29 +837,26 @@ Once you have the solution, you can plot your results.
 Key for the plot below: `n_pre` means the residual stream at the start of layer n, `n_mid` means the residual stream after the attention part of layer n (`n_post` is the same as `n+1_pre` so is not included)
 
 * `layer` is the layer for which we input the residual stream (this is used to identify *which* layer norm scaling factor we want)
-* `incl_mid` is whether to include the residual stream in the middle of a layer, ie after attention & before MLP
+* `incl_mid` is whether to include the residual stream in the middle of a layer, i.e. after attention & before MLP
 * `pos_slice` is the subset of the positions used. See `utils.Slice` for details on the syntax.
 * `return_labels` is whether to return the labels for each component returned (useful for plotting)
 </details>
 
 
 ```python
+accumulated_residual, labels = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1, return_labels=True)
+# accumulated_residual has shape (component, batch, d_model)
 
-if MAIN:
-    accumulated_residual, labels = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1, return_labels=True)
-    # accumulated_residual has shape (component, batch, d_model)
-    
-    logit_lens_logit_diffs: Float[Tensor, "component"] = residual_stack_to_logit_diff(accumulated_residual, cache)
-    
-    line(
-        logit_lens_logit_diffs, 
-        hovermode="x unified",
-        title="Logit Difference From Accumulated Residual Stream",
-        labels={"x": "Layer", "y": "Logit Diff"},
-        xaxis_tickvals=labels,
-        width=800
-    )
+logit_lens_logit_diffs: Float[Tensor, "component"] = residual_stack_to_logit_diff(accumulated_residual, cache)
 
+line(
+    logit_lens_logit_diffs, 
+    hovermode="x unified",
+    title="Logit Difference From Accumulated Residual Stream",
+    labels={"x": "Layer", "y": "Logit Diff"},
+    xaxis_tickvals=labels,
+    width=800
+)
 ```
 
 <details>
@@ -871,20 +877,17 @@ Note: Annoying terminology overload - layer k of a transformer means the kth **t
 
 
 ```python
+per_layer_residual, labels = cache.decompose_resid(layer=-1, pos_slice=-1, return_labels=True)
+per_layer_logit_diffs = residual_stack_to_logit_diff(per_layer_residual, cache)
 
-if MAIN:
-    per_layer_residual, labels = cache.decompose_resid(layer=-1, pos_slice=-1, return_labels=True)
-    per_layer_logit_diffs = residual_stack_to_logit_diff(per_layer_residual, cache)
-    
-    line(
-        per_layer_logit_diffs, 
-        hovermode="x unified",
-        title="Logit Difference From Each Layer",
-        labels={"x": "Layer", "y": "Logit Diff"},
-        xaxis_tickvals=labels,
-        width=800
-    )
-
+line(
+    per_layer_logit_diffs, 
+    hovermode="x unified",
+    title="Logit Difference From Each Layer",
+    labels={"x": "Layer", "y": "Logit Diff"},
+    xaxis_tickvals=labels,
+    width=800
+)
 ```
 
 <details>
@@ -906,26 +909,23 @@ The standard way to compute the output of an attention layer is by concatenating
 
 
 ```python
+per_head_residual, labels = cache.stack_head_results(layer=-1, pos_slice=-1, return_labels=True)
+per_head_residual = einops.rearrange(
+    per_head_residual, 
+    "(layer head) ... -> layer head ...", 
+    layer=model.cfg.n_layers
+)
+per_head_logit_diffs = residual_stack_to_logit_diff(per_head_residual, cache)
 
-if MAIN:
-    per_head_residual, labels = cache.stack_head_results(layer=-1, pos_slice=-1, return_labels=True)
-    per_head_residual = einops.rearrange(
-        per_head_residual, 
-        "(layer head) ... -> layer head ...", 
-        layer=model.cfg.n_layers
-    )
-    per_head_logit_diffs = residual_stack_to_logit_diff(per_head_residual, cache)
-    
-    imshow(
-        per_head_logit_diffs, 
-        labels={"x":"Head", "y":"Layer"}, 
-        title="Logit Difference From Each Head",
-        width=600
-    )
-
+imshow(
+    per_head_logit_diffs, 
+    labels={"x":"Head", "y":"Layer"}, 
+    title="Logit Difference From Each Head",
+    width=600
+)
 ```
 
-We see that only a few heads really matter - heads 9.6 and 9.9 contribute a lot positively (explaining why attention layer 9 is so important), while heads 10.7 and 11.10 contribute a lot negatively (explaining why attention layer 10 and layer 11 are actively harmful). These correspond to (some of) the name movers and negative name movers discussed in the paper. There are also several heads that matter positively or negatively but less strongly (other name movers and backu name movers)
+We see that only a few heads really matter - heads 9.6 and 9.9 contribute a lot positively (explaining why attention layer 9 is so important), while heads 10.7 and 11.10 contribute a lot negatively (explaining why attention layer 10 and layer 11 are actively harmful). These correspond to (some of) the name movers and negative name movers discussed in the paper. There are also several heads that matter positively or negatively but less strongly (other name movers and backup name movers)
 
 There are a few meta observations worth making here - our model has 144 heads, yet we could localise this behaviour to a handful of specific heads, using straightforward, general techniques. This supports the claim in [A Mathematical Framework](https://transformer-circuits.pub/2021/framework/index.html) that attention heads are the right level of abstraction to understand attention. It also really surprising that there are *negative* heads - eg 10.7 makes the incorrect logit 7x *more* likely. I'm not sure what's going on there, though the paper discusses some possibilities.
 
@@ -976,18 +976,17 @@ def topk_of_Nd_tensor(tensor: Float[Tensor, "rows cols"], k: int):
 
 
 
-if MAIN:
-    k = 3
-    
-    for head_type in ["Positive", "Negative"]:
-    
-        # Get the heads with largest (or smallest) contribution to the logit difference
-        top_heads = topk_of_Nd_tensor(per_head_logit_diffs * (1 if head_type=="Positive" else -1), k)
-    
-        # Get all their attention patterns
+k = 3
+
+for head_type in ["Positive", "Negative"]:
+
+    # Get the heads with largest (or smallest) contribution to the logit difference
+    top_heads = topk_of_Nd_tensor(per_head_logit_diffs * (1 if head_type=="Positive" else -1), k)
+
+    # Get all their attention patterns
     attn_patterns_for_important_heads: Float[Tensor, "head q k"] = t.stack([
         cache["pattern", layer][:, head].mean(0)
-         for layer, head in top_heads
+        for layer, head in top_heads
     ])
 
     # Display results
@@ -997,7 +996,6 @@ if MAIN:
         tokens = model.to_str_tokens(tokens[0]),
         attention_head_names = [f"{layer}.{head}" for layer, head in top_heads],
     ))
-
 ```
 
 Reminder - you can use `attention_patterns` or `attention_heads` for these visuals. The former lets you see the actual values, the latter lets you hover over tokens in a printed sentence (and it provides other useful features like locking on tokens, or a superposition of all heads in the display). Both can be useful in different contexts (although I'd recommend usually using `attention_patterns`, it's more useful in most cases for quickly getting a sense of attention patterns).
@@ -1033,8 +1031,29 @@ From these plots, you might want to start thinking about the algorithm which is 
 
 We'll save a full hypothesis for how the model works until the end of the next section.
 
+<details>
+<summary>Aside - be careful with your interpretations!</summary>
 
+Plotting `cache["pattern", layer][:, head][0]` is informative. Replacing this line with the average attention pattern `cache["pattern", layer][:, head].mean(0)` is potentially very misleading, and gives some odd-looking results. Can you figure out why?
 
+<details>
+<summary>Answer</summary>
+
+You're taking the mean over 8 sentences: 4 with an `ABA` structure (i.e. `"When John and Mary went to the store, John gave a drink to..."`) and 4 of the same sentence **but with structure flipped to `ABB`** (i.e. `"When John and Mary went to the store, Mary gave a drink to..."`). This has the effect of flipping the position of `IO1` and `S1`, hence if you take the average over all 8, any attention pattern of the form "always attend to `S1`" will now look like "pay equal attention to `IO1` and `S1`".
+</details>
+
+This is a good lesson in making sure you're aware of what it is you're plotting!
+</details>
+
+**Question** - for your top 3 positive logit attribution heads, you should see `" gave"` also attending to `" Mary"`. Can you guess why?
+
+<details>
+<summary>Answer</summary>
+
+This is (probably) also the IOI circuit in action! These heads are attending to `" Mary"` because they're completing the sentence "When John and Mary went to the store, John gave Mary..."`. This requires the same algorithm - identifying the indirect object in the sentence, and then predicting it as the next token.
+
+Also note that the comma is attending to both John and Mary - this is probably because either name following the comma is a logical continuation of the sentence.
+</details>
 
 """, unsafe_allow_html=True)
 
@@ -1090,9 +1109,11 @@ The obvious limitation to the techniques used above is that they only look at th
 
 The technique we'll use to investigate this is called **activation patching**. This was first introduced in [David Bau and Kevin Meng's excellent ROME paper](https://rome.baulab.info/), there called causal tracing.
 
-The setup of activation patching is to take two runs of the model on two different inputs, the clean run and the corrupted run. The clean run outputs the correct answer and the corrupted run does not. The key idea is that we give the model the corrupted input, but then **intervene** on a specific activation and **patch** in the corresponding activation from the clean run (ie replace the corrupted activation with the clean activation), and then continue the run. And we then measure how much the output has updated towards the correct answer.
+The setup of activation patching is to take two runs of the model on two different inputs, the clean run and the corrupted run. The clean run outputs the correct answer and the corrupted run does not. The key idea is that we give the model the corrupted input, but then **intervene** on a specific activation and **patch** in the corresponding activation from the clean run (i.e. replace the corrupted activation with the clean activation), and then continue the run. And we then measure how much the output has updated towards the correct answer.
 
 We can then iterate over many possible activations and look at how much they affect the corrupted run. If patching in an activation significantly increases the probability of the correct answer, this allows us to *localise* which activations matter.
+
+In other words, this is a **noising** algorithm (unlike last section which was mostly **denoising**).
 
 The ability to localise is a key move in mechanistic interpretability - if the computation is diffuse and spread across the entire model, it is likely much harder to form a clean mechanistic story for what's going on. But if we can identify precisely which parts of the model matter, we can then zoom in and determine what they represent and how they connect up with each other, and ultimately reverse engineer the underlying circuit that they represent.
 
@@ -1176,32 +1197,24 @@ It also makes sense to have the metric be a linear function of the logit differe
 
 
 ```python
+clean_tokens = tokens
+# Swap each adjacent pair to get corrupted tokens
+indices = [i+1 if i % 2 == 0 else i-1 for i in range(len(tokens))]
+corrupted_tokens = clean_tokens[indices]
 
-if MAIN:
-    clean_tokens = tokens
-    # Swap each adjacent pair to get corrupted tokens
-    indices = [i+1 if i % 2 == 0 else i-1 for i in range(len(tokens))]
-    corrupted_tokens = clean_tokens[indices]
-    
-    print(
-        "Clean string 0:    ", model.to_string(clean_tokens[0]), "\n"
-        "Corrupted string 0:", model.to_string(corrupted_tokens[0])
-    )
+print(
+    "Clean string 0:    ", model.to_string(clean_tokens[0]), "\n"
+    "Corrupted string 0:", model.to_string(corrupted_tokens[0])
+)
 
-```
+clean_logits, clean_cache = model.run_with_cache(clean_tokens)
+corrupted_logits, corrupted_cache = model.run_with_cache(corrupted_tokens)
 
-```python
+clean_logit_diff = logits_to_ave_logit_diff(clean_logits, answer_tokens)
+print(f"Clean logit diff: {clean_logit_diff:.4f}")
 
-if MAIN:
-    clean_logits, clean_cache = model.run_with_cache(clean_tokens)
-    corrupted_logits, corrupted_cache = model.run_with_cache(corrupted_tokens)
-    
-    clean_logit_diff = logits_to_ave_logit_diff(clean_logits, answer_tokens)
-    print(f"Clean logit diff: {clean_logit_diff:.4f}")
-    
-    corrupted_logit_diff = logits_to_ave_logit_diff(corrupted_logits, answer_tokens)
-    print(f"Corrupted logit diff: {corrupted_logit_diff:.4f}")
-
+corrupted_logit_diff = logits_to_ave_logit_diff(corrupted_logits, answer_tokens)
+print(f"Corrupted logit diff: {corrupted_logit_diff:.4f}")
 ```
 
 ### Exercise - create a metric
@@ -1217,6 +1230,15 @@ Fill in the function `ioi_metric` below, to create the required metric. Note tha
 
 **Important note** - this function needs to return a scalar tensor, rather than a float. If not, then some of the patching functions later on won't work. The type signature of this is `Float[Tensor, ""]`.
 
+**Second important note** - we've defined this to be 0 when performance is the same as on corrupted input, and 1 when it's the same as on clean input. Why have we done it this way around? The answer is that, in this section, we'll be applying **denoising** rather than **noising** methods. **Denoising** means we start with the corrupted input (i.e. no signal, or negative signal) and patch in with the clean input (i.e. positive signal). This is an important conceptual distinction. When we perform denoising, we're looking for parts of the model which are **sufficient** for the task (e.g. which parts of the model have enough information to recover the correct answer from the corrupted input). We might say that our "null hypothesis" is that a part of the model isn't important, and so changing its value won't get us from corrupted to clean values. On the other hand, **noising** means taking a clean run and patching in with corrupted values, and it tests whether a component is **necessary**. Our "null hypothesis" that the component isn't important now has a different implication - replacing its values with those on the corrupted input won't prevent the model from being able to perform the task. In this section, we'll be doing denoising (i.e. starting with corrupted values and patching in with clean values). In later sections, we'll be doing noising, and we'll define a new metric function for this.
+
+<details>
+<summary>More on noising vs. denoising</summary>
+
+Although algorithms like activation and path patching generally use noising, it has some problems relative to denoising.
+
+The results of denoising are much stronger, because showing that a component or set of components is sufficient for a task is a big deal. On the other hand, the complexity of transformers and interdependence of components means that noising a model can have unpredictable consequences. If loss goes up when we ablate a component, it doesn't necessarily mean that this component was necessary for the task. As an example, ablating MLP0 in gpt2-small seems to make performance much worse on basically any task (because it acts as a kind of extended embedding; more on this later in these exercises), but it's not doing anything important which is *specfic* for the IOI task.
+</details>
 
 ```python
 def ioi_metric(
@@ -1232,11 +1254,9 @@ def ioi_metric(
     pass
 
 
-if MAIN:
-    t.testing.assert_close(ioi_metric(clean_logits).item(), 1.0)
-    t.testing.assert_close(ioi_metric(corrupted_logits).item(), 0.0)
-    t.testing.assert_close(ioi_metric((clean_logits + corrupted_logits) / 2).item(), 0.5)
-
+t.testing.assert_close(ioi_metric(clean_logits).item(), 1.0)
+t.testing.assert_close(ioi_metric(corrupted_logits).item(), 0.0)
+t.testing.assert_close(ioi_metric((clean_logits + corrupted_logits) / 2).item(), 0.5)
 ```
 
 <details>
@@ -1244,26 +1264,6 @@ if MAIN:
 
 
 ```python
-def residual_stack_to_logit_diff(
-    residual_stack: Float[Tensor, "... batch d_model"], 
-    cache: ActivationCache,
-    logit_diff_directions: Float[Tensor, "batch d_model"] = logit_diff_directions,
-) -> Float[Tensor, "..."]:
-    '''
-    Gets the avg logit difference between the correct and incorrect answer for a given 
-    stack of components in the residual stream.
-    '''
-    # SOLUTION
-    batch_size = residual_stack.size(-2)
-    scaled_residual_stack = cache.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=-1)
-    return einops.einsum(
-        scaled_residual_stack, logit_diff_directions,
-        "... batch d_model, batch d_model -> ..."
-    ) / batch_size
-
-
-# Test function by checking that it gives the same result as the original logit difference
-
 def ioi_metric(
     logits: Float[Tensor, "batch seq d_vocab"], 
     answer_tokens: Float[Tensor, "batch 2"] = answer_tokens,
@@ -1288,30 +1288,22 @@ Lets begin with a simple example: we patch in the residual stream at the start o
 
 
 ```python
+act_patch_resid_pre = patching.get_act_patch_resid_pre(
+    model = model,
+    corrupted_tokens = corrupted_tokens,
+    clean_cache = clean_cache,
+    patching_metric = ioi_metric
+)
 
-if MAIN:
-    act_patch_resid_pre = patching.get_act_patch_resid_pre(
-        model = model,
-        corrupted_tokens = corrupted_tokens,
-        clean_cache = clean_cache,
-        patching_metric = ioi_metric
-    )
-    
-    labels = [f"{tok} {i}" for i, tok in enumerate(model.to_str_tokens(clean_tokens[0]))]
+labels = [f"{tok} {i}" for i, tok in enumerate(model.to_str_tokens(clean_tokens[0]))]
 
-```
-
-```python
-
-if MAIN:
-    imshow(
-        act_patch_resid_pre, 
-        labels={"x": "Position", "y": "Layer"},
-        x=labels,
-        title="resid_pre Activation Patching",
-        width=600
-    )
-
+imshow(
+    act_patch_resid_pre, 
+    labels={"x": "Position", "y": "Layer"},
+    x=labels,
+    title="resid_pre Activation Patching",
+    width=600
+)
 ```
 
 Question - what is the interpretation of this graph? What significant things does it tell you about the nature of how the model solves this task?
@@ -1385,11 +1377,9 @@ def get_act_patch_resid_pre(
     pass
 
 
-if MAIN:
-    act_patch_resid_pre_own = get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, ioi_metric)
-    
-    t.testing.assert_close(act_patch_resid_pre, act_patch_resid_pre_own)
+act_patch_resid_pre_own = get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, ioi_metric)
 
+t.testing.assert_close(act_patch_resid_pre, act_patch_resid_pre_own)
 ```
 
 <details>
@@ -1427,7 +1417,7 @@ def get_act_patch_resid_pre(
     # SOLUTION
     model.reset_hooks()
     seq_len = corrupted_tokens.size(1)
-    results = t.zeros(model.cfg.n_layers, seq_len, device="cuda", dtype=t.float32)
+    results = t.zeros(model.cfg.n_layers, seq_len, device=device, dtype=t.float32)
 
     for layer in tqdm(range(model.cfg.n_layers)):
         for position in range(seq_len):
@@ -1447,54 +1437,14 @@ Once you've passed the tests, you can plot your results.
 
 
 ```python
-
-if MAIN:
-    imshow(
-        act_patch_resid_pre_own, 
-        x=labels, 
-        title="Logit Difference From Patched Residual Stream", 
-        labels={"x":"Sequence Position", "y":"Layer"},
-        width=600 # If you remove this argument, the plot will usually fill the available space
-    )
-
+imshow(
+    act_patch_resid_pre_own, 
+    x=labels, 
+    title="Logit Difference From Patched Residual Stream", 
+    labels={"x":"Sequence Position", "y":"Layer"},
+    width=600 # If you remove this argument, the plot will usually fill the available space
+)
 ```
-
-<details>
-<summary>Solution</summary>
-
-```python
-def patch_residual_component(
-    corrupted_residual_component: Float[Tensor, "batch pos d_model"],
-    hook: HookPoint,
-    pos: int,
-    clean_cache: ActivationCache
-) -> Float[Tensor, "batch pos d_model"]:
-    corrupted_residual_component[:, pos, :] = clean_cache[hook.name][:, pos, :]
-    return corrupted_residual_component
-
-
-def get_act_patch_resid_pre(
-    model: HookedTransformer,
-    corrupted_tokens: Float[Tensor, "batch pos"],
-    clean_cache: ActivationCache,
-    patching_metric: Callable[[Float[Tensor, "batch pos d_vocab"]], float]
-) -> Float[Tensor, "layer pos"]:
-    model.reset_hooks()
-    results = t.zeros(model.cfg.n_layers, tokens.size(1), device="cuda", dtype=t.float32)
-
-    for layer in tqdm_notebook(range(model.cfg.n_layers)):
-        for position in range(corrupted_tokens.shape[1]):
-            hook_fn = partial(patch_residual_component, pos=position, clean_cache=clean_cache)
-            patched_logits = model.run_with_hooks(
-                corrupted_tokens,
-                fwd_hooks = [(utils.get_act_name("resid_pre", layer), hook_fn)],
-            )
-            results[layer, position] = patching_metric(patched_logits)
-
-    return results
-```
-</details>
-
 
 ## Patching in residual stream by block
 
@@ -1507,20 +1457,17 @@ One important thing to note - we're cycling through the `resid_pre`, `attn_out` 
 
 
 ```python
+act_patch_block_every = patching.get_act_patch_block_every(model, corrupted_tokens, clean_cache, ioi_metric)
 
-if MAIN:
-    act_patch_block_every = patching.get_act_patch_block_every(model, corrupted_tokens, clean_cache, ioi_metric)
-    
-    imshow(
-        act_patch_block_every,
-        x=labels, 
-        facet_col=0, # This argument tells plotly which dimension to split into separate plots
-        facet_labels=["Residual Stream", "Attn Output", "MLP Output"], # Subtitles of separate plots
-        title="Logit Difference From Patched Attn Head Output", 
-        labels={"x": "Sequence Position", "y": "Layer"},
-        width=1000,
-    )
-
+imshow(
+    act_patch_block_every,
+    x=labels, 
+    facet_col=0, # This argument tells plotly which dimension to split into separate plots
+    facet_labels=["Residual Stream", "Attn Output", "MLP Output"], # Subtitles of separate plots
+    title="Logit Difference From Patched Attn Head Output", 
+    labels={"x": "Sequence Position", "y": "Layer"},
+    width=1000,
+)
 ```
 
 <details>
@@ -1565,7 +1512,7 @@ def get_act_patch_block_every(
     corrupted_tokens: Float[Tensor, "batch pos"], 
     clean_cache: ActivationCache, 
     patching_metric: Callable[[Float[Tensor, "batch pos d_vocab"]], float]
-) -> Float[Tensor, "layer pos"]:
+) -> Float[Tensor, "3 layer pos"]:
     '''
     Returns an array of results of patching each position at each layer in the residual
     stream, using the value from the clean cache.
@@ -1576,25 +1523,19 @@ def get_act_patch_block_every(
     pass
 
 
-```
+act_patch_block_every_own = get_act_patch_block_every(model, corrupted_tokens, clean_cache, ioi_metric)
 
-```python
+t.testing.assert_close(act_patch_block_every, act_patch_block_every_own)
 
-if MAIN:
-    act_patch_block_every_own = get_act_patch_block_every(model, corrupted_tokens, clean_cache, ioi_metric)
-    
-    t.testing.assert_close(act_patch_block_every, act_patch_block_every_own)
-    
-    imshow(
-        act_patch_block_every_own,
-        x=labels, 
-        facet_col=0,
-        facet_labels=["Residual Stream", "Attn Output", "MLP Output"],
-        title="Logit Difference From Patched Attn Head Output", 
-        labels={"x": "Sequence Position", "y": "Layer"},
-        width=1000
-    )
-
+imshow(
+    act_patch_block_every_own,
+    x=labels, 
+    facet_col=0,
+    facet_labels=["Residual Stream", "Attn Output", "MLP Output"],
+    title="Logit Difference From Patched Attn Head Output", 
+    labels={"x": "Sequence Position", "y": "Layer"},
+    width=1000
+)
 ```
 
 <details>
@@ -1617,7 +1558,7 @@ def get_act_patch_block_every(
     '''
     # SOLUTION
     model.reset_hooks()
-    results = t.zeros(3, model.cfg.n_layers, tokens.size(1), device="cuda", dtype=t.float32)
+    results = t.zeros(3, model.cfg.n_layers, tokens.size(1), device=device, dtype=t.float32)
 
     for component_idx, component in enumerate(["resid_pre", "attn_out", "mlp_out"]):
         for layer in tqdm(range(model.cfg.n_layers)):
@@ -1643,27 +1584,19 @@ The code below patches a head's output over all sequence positions, and returns 
 
 
 ```python
+act_patch_attn_head_out_all_pos = patching.get_act_patch_attn_head_out_all_pos(
+    model, 
+    corrupted_tokens, 
+    clean_cache, 
+    ioi_metric
+)
 
-if MAIN:
-    act_patch_attn_head_out_all_pos = patching.get_act_patch_attn_head_out_all_pos(
-        model, 
-        corrupted_tokens, 
-        clean_cache, 
-        ioi_metric
-    )
-
-```
-
-```python
-
-if MAIN:
-    imshow(
-        act_patch_attn_head_out_all_pos, 
-        labels={"y": "Layer", "x": "Head"}, 
-        title="attn_head_out Activation Patching (All Pos)",
-        width=600
-    )
-
+imshow(
+    act_patch_attn_head_out_all_pos, 
+    labels={"y": "Layer", "x": "Head"}, 
+    title="attn_head_out Activation Patching (All Pos)",
+    width=600
+)
 ```
 
 <details>
@@ -1734,23 +1667,16 @@ def get_act_patch_attn_head_out_all_pos(
     pass
 
 
-if MAIN:
-    act_patch_attn_head_out_all_pos_own = get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, ioi_metric)
-    
-    t.testing.assert_close(act_patch_attn_head_out_all_pos, act_patch_attn_head_out_all_pos_own)
+act_patch_attn_head_out_all_pos_own = get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, ioi_metric)
 
-```
+t.testing.assert_close(act_patch_attn_head_out_all_pos, act_patch_attn_head_out_all_pos_own)
 
-```python
-
-if MAIN:
-    imshow(
-        act_patch_attn_head_out_all_pos_own,
-        title="Logit Difference From Patched Attn Head Output", 
-        labels={"x":"Head", "y":"Layer"},
-        width=600
-    )
-
+imshow(
+    act_patch_attn_head_out_all_pos_own,
+    title="Logit Difference From Patched Attn Head Output", 
+    labels={"x":"Head", "y":"Layer"},
+    width=600
+)
 ```
 
 <details>
@@ -1787,7 +1713,7 @@ def get_act_patch_attn_head_out_all_pos(
     '''
     # SOLUTION
     model.reset_hooks()
-    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device="cuda", dtype=t.float32)
+    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device=device, dtype=t.float32)
 
     for layer in tqdm(range(model.cfg.n_layers)):
         for head in range(model.cfg.n_heads):
@@ -1823,28 +1749,20 @@ Again, note that this function isn't patching multiple things at once. It's loop
 
 
 ```python
+act_patch_attn_head_all_pos_every = patching.get_act_patch_attn_head_all_pos_every(
+    model, 
+    corrupted_tokens, 
+    clean_cache, 
+    ioi_metric
+)
 
-if MAIN:
-    act_patch_attn_head_all_pos_every = patching.get_act_patch_attn_head_all_pos_every(
-        model, 
-        corrupted_tokens, 
-        clean_cache, 
-        ioi_metric
-    )
-
-```
-
-```python
-
-if MAIN:
-    imshow(
-        act_patch_attn_head_all_pos_every, 
-        facet_col=0, 
-        facet_labels=["Output", "Query", "Key", "Value", "Pattern"],
-        title="Activation Patching Per Head (All Pos)", 
-        labels={"x": "Head", "y": "Layer"},
-    )
-
+imshow(
+    act_patch_attn_head_all_pos_every, 
+    facet_col=0, 
+    facet_labels=["Output", "Query", "Key", "Value", "Pattern"],
+    title="Activation Patching Per Head (All Pos)", 
+    labels={"x": "Head", "y": "Layer"},
+)
 ```
 
 ### Exercise (optional) - implement head-to-head-input patching
@@ -1891,30 +1809,23 @@ def get_act_patch_attn_head_all_pos_every(
     pass
 
 
-if MAIN:
-    act_patch_attn_head_all_pos_every_own = get_act_patch_attn_head_all_pos_every(
-        model,
-        corrupted_tokens,
-        clean_cache,
-        ioi_metric
-    )
-    
-    t.testing.assert_close(act_patch_attn_head_all_pos_every, act_patch_attn_head_all_pos_every_own)
+act_patch_attn_head_all_pos_every_own = get_act_patch_attn_head_all_pos_every(
+    model,
+    corrupted_tokens,
+    clean_cache,
+    ioi_metric
+)
 
-```
+t.testing.assert_close(act_patch_attn_head_all_pos_every, act_patch_attn_head_all_pos_every_own)
 
-```python
-
-if MAIN:
-    imshow(
-        act_patch_attn_head_all_pos_every_own,
-        facet_col=0,
-        facet_labels=["Output", "Query", "Key", "Value", "Pattern"],
-        title="Activation Patching Per Head (All Pos)",
-        labels={"x": "Head", "y": "Layer"},
-        width=1200
-    )
-
+imshow(
+    act_patch_attn_head_all_pos_every_own,
+    facet_col=0,
+    facet_labels=["Output", "Query", "Key", "Value", "Pattern"],
+    title="Activation Patching Per Head (All Pos)",
+    labels={"x": "Head", "y": "Layer"},
+    width=1200
+)
 ```
 
 <details>
@@ -1951,7 +1862,7 @@ def get_act_patch_attn_head_all_pos_every(
     called on the model's logit output.
     '''
     # SOLUTION
-    results = t.zeros(5, model.cfg.n_layers, model.cfg.n_heads, device="cuda", dtype=t.float32)
+    results = t.zeros(5, model.cfg.n_layers, model.cfg.n_heads, device=device, dtype=t.float32)
     # Loop over each component in turn
     for component_idx, component in enumerate(["z", "q", "k", "v", "pattern"]):
         for layer in tqdm(range(model.cfg.n_layers)):
@@ -2029,21 +1940,21 @@ OK, let's zoom out and reconsolidate. Here's a recap of the most important obser
 
 * Heads `9.9`, `9.6`, and `10.0` are the most important heads in terms of directly writing to the residual stream. In all these heads, the `END` attends strongly to the `IO`.
     * We discovered this by taking the values written by each head in each layer to the residual stream, and projecting them along the logit diff direction by using `residual_stack_to_logit_diff`. We also looked at attention patterns using `circuitsvis`.
-    * <span style="color:turquoise">**This suggests that these heads are copying `IO` to `end`, to use it as the predicted next token.**</span>
+    * <span style="color:darkorange">**This suggests that these heads are copying `IO` to `end`, to use it as the predicted next token.**</span>
     * The question then becomes *"how do these heads know to attend to this token, and not attend to `S`?"*
 
 <br>
 
-* All the action is on `S2` until layer 7 and then transitions to `END`. And that attention layers matter a lot, MLP layers not so much (apart from MLP0, likely as an extended embedding).
+* All the action is on `S2` until layer 7 and then transitions to `END`. And that attention layers matter a lot, MLP layers not so much (apart from MLP0, likely as an [extended embedding](https://www.lesswrong.com/s/yivyHaCAmMJ3CqSyj/p/XNjRwEX9kxbpzWFWd#:~:text=GPT%2D2%20Small%E2%80%99s%20performance%20is%20ruined%20if%20you%20ablate%20MLP0)).
     * We discovered this by doing **activation patching** on `resid_pre`, `attn_out`, and `mlp_out`.
-    * <span style="color:turquoise">**This suggests that there is a cluster of heads in layers 7 & 8, which move information from `S2` to `END`. We deduce that this information is how heads `9.9`, `9.6` and `10.0` know to attend to `IO`.**</span>
+    * <span style="color:darkorange">**This suggests that there is a cluster of heads in layers 7 & 8, which move information from `S2` to `END`. We deduce that this information is how heads `9.9`, `9.6` and `10.0` know to attend to `IO`.**</span>
     * The question then becomes *"what is this information, how does it end up in the `S2` token, and how does `END` know to attend to it?"*
 
 <br>
 
 * The significant heads in layers 7 & 8 are `7.3`, `7.9`, `8.6`, `8.10`. These heads have high activation patching values for their value vectors, less so for their queries and keys.
     * We discovered this by doing **activation patching** on the value inputs for these heads.
-    * <span style="color:turquoise">**This supports the previous observation, and it tells us that the interesting computation goes into *what gets moved* from `S2` to `END`, rather than the fact that `END` attends to `S2`.**</span>.
+    * <span style="color:darkorange">**This supports the previous observation, and it tells us that the interesting computation goes into *what gets moved* from `S2` to `END`, rather than the fact that `END` attends to `S2`.**</span>.
     * We still don't know: *"what is this information, and how does it end up in the `S2` token?"*
 
 <br>
@@ -2181,18 +2092,15 @@ The dataset we'll be using is an instance of `IOIDataset`, which is generated by
 
 
 ```python
-
-if MAIN:
-    N = 25
-    ioi_dataset = IOIDataset(
-        prompt_type="mixed",
-        N=N,
-        tokenizer=model.tokenizer,
-        prepend_bos=False,
-        seed=1,
-        device=str(device)
-    )
-
+N = 25
+ioi_dataset = IOIDataset(
+    prompt_type="mixed",
+    N=N,
+    tokenizer=model.tokenizer,
+    prepend_bos=False,
+    seed=1,
+    device=str(device)
+)
 ```
 
 This dataset has a few useful attributes & methods. Here are the main ones you should be aware of for these exercises:
@@ -2212,10 +2120,7 @@ We define this dataset below. Note the syntax of the `gen_flipped_prompts` metho
 
 
 ```python
-
-if MAIN:
-    abc_dataset = ioi_dataset.gen_flipped_prompts("ABB->XYZ, BAB->XYZ")
-
+abc_dataset = ioi_dataset.gen_flipped_prompts("ABB->XYZ, BAB->XYZ")
 ```
 
 Let's take a look at this dataset. We'll define a helper function `make_table`, which prints out tables after being fed columns rather than rows (don't worry about the syntax, it's not important).
@@ -2236,22 +2141,17 @@ def make_table(cols, colnames, title="", n_rows=5, decimals=4):
         table.add_row(*list(map(f, row)))
     rprint(table)
 
-```
 
-```python
-
-if MAIN:
-    make_table(
-        colnames = ["IOI prompt", "IOI subj", "IOI indirect obj", "ABC prompt"],
-        cols = [
-            map(format_prompt, ioi_dataset.sentences), 
-            model.to_string(ioi_dataset.s_tokenIDs).split(), 
-            model.to_string(ioi_dataset.io_tokenIDs).split(), 
-            map(format_prompt, abc_dataset.sentences), 
-        ],
-        title = "Sentences from IOI vs ABC distribution",
-    )
-
+make_table(
+    colnames = ["IOI prompt", "IOI subj", "IOI indirect obj", "ABC prompt"],
+    cols = [
+        map(format_prompt, ioi_dataset.sentences), 
+        model.to_string(ioi_dataset.s_tokenIDs).split(), 
+        model.to_string(ioi_dataset.io_tokenIDs).split(), 
+        map(format_prompt, abc_dataset.sentences), 
+    ],
+    title = "Sentences from IOI vs ABC distribution",
+)
 ```
 
 Next, we'll define functions similar to the ones from previous sections. We've just given you these, rather than making you repeat the exercise of writing them (although you should compare these functions to the ones you wrote earlier, and make sure you understand how they work).
@@ -2277,37 +2177,30 @@ def logits_to_ave_logit_diff_2(logits: Float[Tensor, "batch seq d_vocab"], ioi_d
 
 
 
-if MAIN:
-    model.reset_hooks(including_permanent=True)
-    
-    ioi_logits_original, ioi_cache = model.run_with_cache(ioi_dataset.toks)
-    abc_logits_original, abc_cache = model.run_with_cache(abc_dataset.toks)
-    
-    ioi_per_prompt_diff = logits_to_ave_logit_diff_2(ioi_logits_original, per_prompt=True)
-    abc_per_prompt_diff = logits_to_ave_logit_diff_2(abc_logits_original, per_prompt=True)
-    
-    ioi_average_logit_diff = logits_to_ave_logit_diff_2(ioi_logits_original).item()
-    abc_average_logit_diff = logits_to_ave_logit_diff_2(abc_logits_original).item()
+model.reset_hooks(including_permanent=True)
 
-```
+ioi_logits_original, ioi_cache = model.run_with_cache(ioi_dataset.toks)
+abc_logits_original, abc_cache = model.run_with_cache(abc_dataset.toks)
 
-```python
+ioi_per_prompt_diff = logits_to_ave_logit_diff_2(ioi_logits_original, per_prompt=True)
+abc_per_prompt_diff = logits_to_ave_logit_diff_2(abc_logits_original, per_prompt=True)
 
-if MAIN:
-    print(f"Average logit diff (IOI dataset): {ioi_average_logit_diff:.4f}")
-    print(f"Average logit diff (ABC dataset): {abc_average_logit_diff:.4f}")
-    
-    make_table(
-        colnames = ["IOI prompt", "IOI logit diff", "ABC prompt", "ABC logit diff"],
-        cols = [
-            map(format_prompt, ioi_dataset.sentences), 
-            ioi_per_prompt_diff,
-            map(format_prompt, abc_dataset.sentences), 
-            abc_per_prompt_diff,
-        ],
-        title = "Sentences from IOI vs ABC distribution",
-    )
+ioi_average_logit_diff = logits_to_ave_logit_diff_2(ioi_logits_original).item()
+abc_average_logit_diff = logits_to_ave_logit_diff_2(abc_logits_original).item()
 
+print(f"Average logit diff (IOI dataset): {ioi_average_logit_diff:.4f}")
+print(f"Average logit diff (ABC dataset): {abc_average_logit_diff:.4f}")
+
+make_table(
+    colnames = ["IOI prompt", "IOI logit diff", "ABC prompt", "ABC logit diff"],
+    cols = [
+        map(format_prompt, ioi_dataset.sentences), 
+        ioi_per_prompt_diff,
+        map(format_prompt, abc_dataset.sentences), 
+        abc_per_prompt_diff,
+    ],
+    title = "Sentences from IOI vs ABC distribution",
+)
 ```
 
 Note that we're always measuring performance ***with respect to the correct answers for the IOI dataset, not the ABC dataset***, because we want our ABC dataset to carry no information that helps with the IOI task (hence patching it in gives us signals which are totally uncorrelated with the correct answer). For instance, the model will obviously not complete sentences like `"When Max and Victoria got a snack at the store, Clark decided to give it to"` with the name `"Tyler"`.
@@ -2335,11 +2228,8 @@ def ioi_metric_2(
     return (patched_logit_diff - clean_logit_diff) / (clean_logit_diff - corrupted_logit_diff)
 
 
-
-if MAIN:
-    print(f"IOI metric (IOI dataset): {ioi_metric_2(ioi_logits_original):.4f}")
-    print(f"IOI metric (ABC dataset): {ioi_metric_2(abc_logits_original):.4f}")
-
+print(f"IOI metric (IOI dataset): {ioi_metric_2(ioi_logits_original):.4f}")
+print(f"IOI metric (ABC dataset): {ioi_metric_2(abc_logits_original):.4f}")
 ```
 
 ## What is path patching?
@@ -2368,11 +2258,11 @@ Terminology note - we call head $D$ the **sender node**, and head $G$ the **rece
 
 Let's make this concrete, and take a simple 3-layer transformer with 2 heads per layer. Let's perform path patching on the edge from head `0.0` to `2.0` (terminology note: `0.0` is the **sender**, and `2.0` is the **receiver**). Note that here, we're considering "direct paths" as anything that doesn't go through another attention head (so it can go through any combination of MLPs). Intuitively, the nodes (attention heads) are the only things that can move information around in the model, and this is the thing we want to study. In contrast, MLPs just perform information processing, and they're not as interesting for this task.
 
-Our 3-step process (reading from right to left) looks like:
+Our 3-step process looks like the diagram below (remember green is corrupted, grey is clean).
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/path-patching-alg-transformers-4.png" width="700">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/path-patching-alg-transformers-6.png" width="700">
 
-(Note - in this diagram, the uncoloured nodes indicate we aren't doing any patching; we're just allowing them to be computed from the values of nodes which are downstream of it.)
+(Note - in this diagram, the uncoloured nodes indicate we aren't doing any patching; we're just allowing them to be computed from the values of nodes which are upstream of it.)
 
 
 Why does this work? If you stare at the middle picture above for long enough, you'll realise that the contribution from every non-direct path from `0.0` $\to$ `2.0` is the same as it would be on the clean distribution, while all the direct paths' contributions are the same as they would be on the corrupted distribution. 
@@ -2430,6 +2320,7 @@ You can also look at the dropdowns to get more hints and guidance (e.g. if you w
 
 You'll know you've succeeded if you can plot the results, and replicate Figure 3(b) from [the paper](https://arxiv.org/pdf/2211.00593.pdf) (at the top of page 6).
 
+**Note - if you use `model.add_hook` then `model.run_with_cache`, you might have to pass the argument `level=1` to the `add_hook` method. I don't know why the function sometimes fails unless you do this (this bug only started appearing after the exercises were written). I've not had time to track this down, but extra credit to anyone who can (-:**
 
 <details>
 <summary>Click here to get a docstring for the main function.</summary>
@@ -2478,7 +2369,7 @@ def get_path_patch_head_to_final_resid_post(
         tensor of metric values for every possible sender head
     '''
     model.reset_hooks()
-    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device="cuda", dtype=t.float32)
+    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device=device, dtype=t.float32)
 
     # ========== Step 1 ==========
     # Gather activations on x_orig and x_new
@@ -2515,29 +2406,6 @@ def get_path_patch_head_to_final_resid_post(
 
 
 ```python
-# FLAT SOLUTION NOINDENT
-# 
-def patch_or_freeze_head_vectors(
-    orig_head_vector: Float[Tensor, "batch pos head_index d_head"],
-    hook: HookPoint, 
-    new_cache: ActivationCache,
-    orig_cache: ActivationCache,
-    head_to_patch: Tuple[int, int], 
-) -> Float[Tensor, "batch pos head_index d_head"]:
-    '''
-    This helps implement step 2 of path patching. We freeze all head outputs (i.e. set them
-    to their values in orig_cache), except for head_to_patch (if it's in this layer) which
-    we patch with the value from new_cache.
-
-    head_to_patch: tuple of (layer, head)
-        we can use hook.layer() to check if the head to patch is in this layer
-    '''
-    # Setting using ..., otherwise changing orig_head_vector will edit cache value too
-    orig_head_vector[...] = orig_cache[hook.name][...]
-    if head_to_patch[0] == hook.layer():
-        orig_head_vector[:, :, head_to_patch[1]] = new_cache[hook.name][:, :, head_to_patch[1]]
-    return orig_head_vector
-# FLAT SOLUTION END
 
 
 def get_path_patch_head_to_final_resid_post(
@@ -2551,22 +2419,15 @@ def get_path_patch_head_to_final_resid_post(
     pass
 
 
-if MAIN:
-    path_patch_head_to_final_resid_post_eq = get_path_patch_head_to_final_resid_post(model, ioi_metric_2)
+path_patch_head_to_final_resid_post = get_path_patch_head_to_final_resid_post(model, ioi_metric_2)
 
-```
-
-```python
-
-if MAIN:
-    imshow(
-        100 * path_patch_head_to_final_resid_post_eq,
-        title="Direct effect on logit difference",
-        labels={"x":"Head", "y":"Layer", "color": "Logit diff. variation"},
-        coloraxis=dict(colorbar_ticksuffix = "%"),
-        width=600,
-    )
-
+imshow(
+    100 * path_patch_head_to_final_resid_post,
+    title="Direct effect on logit difference",
+    labels={"x":"Head", "y":"Layer", "color": "Logit diff. variation"},
+    coloraxis=dict(colorbar_ticksuffix = "%"),
+    width=600,
+)
 ```
 
 <details>
@@ -2574,6 +2435,28 @@ if MAIN:
 
 
 ```python
+def patch_or_freeze_head_vectors(
+	orig_head_vector: Float[Tensor, "batch pos head_index d_head"],
+	hook: HookPoint, 
+	new_cache: ActivationCache,
+	orig_cache: ActivationCache,
+	head_to_patch: Tuple[int, int], 
+) -> Float[Tensor, "batch pos head_index d_head"]:
+	'''
+	This helps implement step 2 of path patching. We freeze all head outputs (i.e. set them
+	to their values in orig_cache), except for head_to_patch (if it's in this layer) which
+	we patch with the value from new_cache.
+
+	head_to_patch: tuple of (layer, head)
+		we can use hook.layer() to check if the head to patch is in this layer
+	'''
+	# Setting using ..., otherwise changing orig_head_vector will edit cache value too
+	orig_head_vector[...] = orig_cache[hook.name][...]
+	if head_to_patch[0] == hook.layer():
+		orig_head_vector[:, :, head_to_patch[1]] = new_cache[hook.name][:, :, head_to_patch[1]]
+	return orig_head_vector
+
+
 def get_path_patch_head_to_final_resid_post(
     model: HookedTransformer,
     patching_metric: Callable,
@@ -2593,7 +2476,7 @@ def get_path_patch_head_to_final_resid_post(
         tensor of metric values for every possible sender head
     '''
     model.reset_hooks()
-    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device="cuda", dtype=t.float32)
+    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device=device, dtype=t.float32)
 
     resid_post_hook_name = utils.get_act_name("resid_post", model.cfg.n_layers - 1)
     resid_post_name_filter = lambda name: name == resid_post_hook_name
@@ -2639,8 +2522,6 @@ def get_path_patch_head_to_final_resid_post(
             names_filter=resid_post_name_filter, 
             return_type=None
         )
-        # if (sender_layer, sender_head) == (9, 9):
-        #     return patched_cache
         assert set(patched_cache.keys()) == {resid_post_hook_name}
 
         # ========== Step 3 ==========
@@ -2708,8 +2589,66 @@ In section 3, since your receiver nodes are in the middle of the model rather th
 
 
 ```python
-# FLAT SOLUTION NOINDENT
-# 
+
+
+def get_path_patch_head_to_heads(
+    receiver_heads: List[Tuple[int, int]],
+    receiver_input: str,
+    model: HookedTransformer,
+    patching_metric: Callable,
+    new_dataset: IOIDataset = abc_dataset,
+    orig_dataset: IOIDataset = ioi_dataset,
+    new_cache: Optional[ActivationCache] = abc_cache,
+    orig_cache: Optional[ActivationCache] = ioi_cache,
+) -> Float[Tensor, "layer head"]:
+    '''
+    Performs path patching (see algorithm in appendix B of IOI paper), with:
+
+        sender head = (each head, looped through, one at a time)
+        receiver node = input to a later head (or set of heads)
+
+    The receiver node is specified by receiver_heads and receiver_input.
+    Example (for S-inhibition path patching the values):
+        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
+        receiver_input = "v"
+
+    Returns:
+        tensor of metric values for every possible sender head
+    '''
+    pass
+
+
+```
+
+```python
+model.reset_hooks()
+
+s_inhibition_value_path_patching_results = get_path_patch_head_to_heads(
+    receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
+    receiver_input = "v",
+    model = model,
+    patching_metric = ioi_metric_2
+)
+
+imshow(
+    100 * s_inhibition_value_path_patching_results,
+    title="Direct effect on S-Inhibition Heads' values", 
+    labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
+    width=600,
+    coloraxis=dict(colorbar_ticksuffix = "%"),
+)
+```
+
+<details>
+<summary>Question - what is the interpretation of this plot? </summary>
+
+This plot confirms our earlier observations, that the S-inhibition heads' value vectors are the ones which matter. But it does more, by confirming our hypothesis that the S-inhibition heads' value vectors are supplied to them primarily by the outputs of heads `0.1`, `3.0`, `5.5` and `6.9` (which are the heads found by the paper to be the two most important duplicate token heads and two most important induction heads respectively).
+</details>
+
+<details>
+<summary>Solution </summary>
+
+```python
 def patch_head_input(
     orig_activation: Float[Tensor, "batch pos head_idx d_head"],
     hook: HookPoint,
@@ -2723,7 +2662,6 @@ def patch_head_input(
     heads_to_patch = [head for layer, head in head_list if layer == hook.layer()]
     orig_activation[:, :, heads_to_patch] = patched_cache[hook.name][:, :, heads_to_patch]
     return orig_activation
-# FLAT SOLUTION END
 
 
 def get_path_patch_head_to_heads(
@@ -2733,8 +2671,8 @@ def get_path_patch_head_to_heads(
     patching_metric: Callable,
     new_dataset: IOIDataset = abc_dataset,
     orig_dataset: IOIDataset = ioi_dataset,
-    new_cache: Optional[ActivationCache] = None,
-    orig_cache: Optional[ActivationCache] = None,
+    new_cache: Optional[ActivationCache] = abc_cache,
+    orig_cache: Optional[ActivationCache] = ioi_cache,
 ) -> Float[Tensor, "layer head"]:
     '''
     Performs path patching (see algorithm in appendix B of IOI paper), with:
@@ -2750,43 +2688,80 @@ def get_path_patch_head_to_heads(
     Returns:
         tensor of metric values for every possible sender head
     '''
-    pass
-
-
-```
-
-```python
-
-if MAIN:
+    # SOLUTION
     model.reset_hooks()
-    
-    s_inhibition_value_path_patching_results = get_path_patch_head_to_heads(
-        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
-        receiver_input = "v",
-        model = model,
-        patching_metric = ioi_metric_2
-    )
-    
-    imshow(
-        100 * s_inhibition_value_path_patching_results,
-        title="Direct effect on S-Inhibition Heads' values", 
-        labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
-        width=600,
-        coloraxis=dict(colorbar_ticksuffix = "%"),
-    )
 
+    assert receiver_input in ("k", "q", "v")
+    receiver_layers = set(next(zip(*receiver_heads)))
+    receiver_hook_names = [utils.get_act_name(receiver_input, layer) for layer in receiver_layers]
+    receiver_hook_names_filter = lambda name: name in receiver_hook_names
+
+    results = t.zeros(max(receiver_layers), model.cfg.n_heads, device=device, dtype=t.float32)
+    
+    # ========== Step 1 ==========
+    # Gather activations on x_orig and x_new
+
+    # Note the use of names_filter for the run_with_cache function. Using it means we 
+    # only cache the things we need (in this case, just attn head outputs).
+    z_name_filter = lambda name: name.endswith("z")
+    if new_cache is None:
+        _, new_cache = model.run_with_cache(
+            new_dataset.toks, 
+            names_filter=z_name_filter, 
+            return_type=None
+        )
+    if orig_cache is None:
+        _, orig_cache = model.run_with_cache(
+            orig_dataset.toks, 
+            names_filter=z_name_filter, 
+            return_type=None
+        )
+
+    # Note, the sender layer will always be before the final receiver layer, otherwise there will
+    # be no causal effect from sender -> receiver. So we only need to loop this far.
+    for (sender_layer, sender_head) in tqdm(list(itertools.product(
+        range(max(receiver_layers)),
+        range(model.cfg.n_heads)
+    ))):
+
+        # ========== Step 2 ==========
+        # Run on x_orig, with sender head patched from x_new, every other head frozen
+
+        hook_fn = partial(
+            patch_or_freeze_head_vectors,
+            new_cache=new_cache, 
+            orig_cache=orig_cache,
+            head_to_patch=(sender_layer, sender_head),
+        )
+        model.add_hook(z_name_filter, hook_fn) #, level=1)
+        
+        _, patched_cache = model.run_with_cache(
+            orig_dataset.toks, 
+            names_filter=receiver_hook_names_filter,  
+            return_type=None
+        )
+        # model.reset_hooks(including_permanent=True)
+        assert set(patched_cache.keys()) == set(receiver_hook_names)
+
+        # ========== Step 3 ==========
+        # Run on x_orig, patching in the receiver node(s) from the previously cached value
+        
+        hook_fn = partial(
+            patch_head_input, 
+            patched_cache=patched_cache, 
+            head_list=receiver_heads,
+        )
+        patched_logits = model.run_with_hooks(
+            orig_dataset.toks,
+            fwd_hooks = [(receiver_hook_names_filter, hook_fn)], 
+            return_type="logits"
+        )
+
+        # Save the results
+        results[sender_layer, sender_head] = patching_metric(patched_logits)
+
+    return results
 ```
-
-<details>
-<summary>Question - what is the interpretation of this plot? </summary>
-
-This plot confirms our earlier observations, that the S-inhibition heads' value vectors are the ones which matter. But it does more, by confirming our hypothesis that the S-inhibition heads' value vectors are supplied to them primarily by the outputs of heads `0.1`, `3.0`, `5.5` and `6.9` (which are the heads found by the paper to be the two most important duplicate token heads and two most important induction heads respectively).
-</details>
-
-<details>
-<summary>Solution </summary>
-
-
 </details>
 
 
@@ -2902,13 +2877,11 @@ def calculate_and_show_scatter_embedding_vs_attn(
     pass
 
 
-if MAIN:
-    nmh = (9, 9)
-    calculate_and_show_scatter_embedding_vs_attn(*nmh)
-    
-    nnmh = (11, 10)
-    calculate_and_show_scatter_embedding_vs_attn(*nnmh)
+nmh = (9, 9)
+calculate_and_show_scatter_embedding_vs_attn(*nmh)
 
+nnmh = (11, 10)
+calculate_and_show_scatter_embedding_vs_attn(*nnmh)
 ```
 
 <details>
@@ -3006,6 +2979,7 @@ A few notes:
 
 * You can use `model.to_tokens` to convert the names to tokens. Remember to use `prepend_bos=False`, since you just want the tokens of names so you can embed them. Note that this function will treat the list of names as a batch of single-token inputs, which works fine for our purposes.
 * You can apply MLPs and layernorms as functions, by just indexing the model's blocks (e.g. use `model.blocks[i].mlp` or `model.blocks[j].ln1` as a function). Remember that `ln1` is the layernorm that comes before attention, and `ln2` comes before the MLP.
+* Remember that you need to apply MLP0 before you apply the OV matrix (which is why we omit the 0th layer in our scores). The reason for this is that ablating MLP0 has a strangely large effect in gpt2-small relative to ablating other MLPs, possibly because it's acting as an extended embedding (see [here](https://www.lesswrong.com/s/yivyHaCAmMJ3CqSyj/p/XNjRwEX9kxbpzWFWd#:~:text=GPT%2D2%20Small%E2%80%99s%20performance%20is%20ruined%20if%20you%20ablate%20MLP0) for an explanation).
 
 Also, you shouldn't expect to get exactly the same results as the paper (because some parts of this experiment have been set up very slightly different), although you probably shouldn't be off by more than 10%.
 
@@ -3015,47 +2989,39 @@ def get_copying_scores(
     model: HookedTransformer,
     k: int = 5,
     names: list = NAMES
-) -> Float[Tensor, "2 layer head"]:
+) -> Float[Tensor, "2 layer-1 head"]:
     '''
     Gets copying scores (both positive and negative) as described in page 6 of the IOI paper, for every (layer, head) pair in the model.
     
     Returns these in a 3D tensor (the first dimension is for positive vs negative).
+
+    Omits the 0th layer, because this is before MLP0 (which we're claiming acts as an extended embedding).
     '''
     pass
 
 
-```
+copying_results = get_copying_scores(model)
 
-```python
+imshow(
+    copying_results, 
+    facet_col=0, 
+    facet_labels=["Positive copying scores", "Negative copying scores"],
+    title="Copying scores of attention heads' OV circuits",
+    width=800
+)
 
-if MAIN:
-    copying_results = get_copying_scores(model)
-    
-    imshow(
-        copying_results, 
-        facet_col=0, 
-        facet_labels=["Positive copying scores", "Negative copying scores"],
-        title="Copying scores of attention heads' OV circuits",
-        width=800
+
+heads = {"name mover": [(9, 9), (10, 0), (9, 6)], "negative name mover": [(10, 7), (11, 10)]}
+
+for i, name in enumerate(["name mover", "negative name mover"]):
+    make_table(
+        title=f"Copying Scores ({name} heads)",
+        colnames=["Head", "Score"],
+        cols=[
+            list(map(str, heads[name])) + ["[dark_orange bold]Average"],
+            [f"{copying_results[i, layer-1, head]:.2%}" for (layer, head) in heads[name]] + [f"[dark_orange bold]{copying_results[i].mean():.2%}"]
+        ]
     )
-
-```
-
-```python
-
-if MAIN:
-    heads = {"name mover": [(9, 9), (10, 0), (9, 6)], "negative name mover": [(10, 7), (11, 10)]}
-    
-    for i, name in enumerate(["name mover", "negative name mover"]):
-        make_table(
-            title=f"Copying Scores ({name} heads)",
-            colnames=["Head", "Score"],
-            cols=[
-                list(map(str, heads[name])) + ["[dark_orange bold]Average"],
-                [f"{copying_results[i, layer, head]:.2%}" for (layer, head) in heads[name]] + [f"[dark_orange bold]{copying_results[i].mean():.2%}"]
-            ]
-        )
-
 ```
 
 <details>
@@ -3067,14 +3033,16 @@ def get_copying_scores(
     model: HookedTransformer,
     k: int = 5,
     names: list = NAMES
-) -> Float[Tensor, "2 layer head"]:
+) -> Float[Tensor, "2 layer-1 head"]:
     '''
     Gets copying scores (both positive and negative) as described in page 6 of the IOI paper, for every (layer, head) pair in the model.
     
     Returns these in a 3D tensor (the first dimension is for positive vs negative).
+
+    Omits the 0th layer, because this is before MLP0 (which we're claiming acts as an extended embedding).
     '''
     # SOLUTION
-    results = t.zeros((2, model.cfg.n_layers, model.cfg.n_heads), device="cuda")
+    results = t.zeros((2, model.cfg.n_layers, model.cfg.n_heads), device=device)
 
     # Define components from our model (for typechecking, and cleaner code)
     embed: Embed = model.embed
@@ -3091,7 +3059,7 @@ def get_copying_scores(
     resid_after_mlp1 = name_embeddings + mlp0(ln0(name_embeddings))
 
     # Loop over all (layer, head) pairs
-    for layer in range(model.cfg.n_layers):
+    for layer in range(1, model.cfg.n_layers):
         for head in range(model.cfg.n_heads):
 
             # Get W_OV matrix
@@ -3114,7 +3082,7 @@ def get_copying_scores(
             in_bottomk = (bottomk_logits == name_tokens).any(-1)
 
             # Fill in results
-            results[:, layer, head] = t.tensor([in_topk.float().mean(), in_bottomk.float().mean()])
+            results[:, layer-1, head] = t.tensor([in_topk.float().mean(), in_bottomk.float().mean()])
 
     return results
 ```
@@ -3161,24 +3129,6 @@ We've provided a template for this function. Note use of `typing.Literal`, which
 
 ```python
 
-if MAIN:
-    model.reset_hooks()
-    
-    # FLAT SOLUTION NOINDENT
-    # 
-def generate_repeated_tokens(
-    model: HookedTransformer, 
-    seq_len: int, 
-    batch: int = 1
-) -> Float[Tensor, "batch 2*seq_len"]:
-    '''
-    Generates a sequence of repeated random tokens (no start token).
-    '''
-    rep_tokens_half = t.randint(0, model.cfg.d_vocab, (batch, seq_len), dtype=t.int64)
-    rep_tokens = t.cat([rep_tokens_half, rep_tokens_half], dim=-1).to(device)
-    return rep_tokens
-# FLAT SOLUTION END
-
 
 def get_attn_scores(
     model: HookedTransformer, 
@@ -3215,9 +3165,8 @@ def plot_early_head_validation_results(seq_len: int = 50, batch: int = 50):
 
 
 
-if MAIN:
-    plot_early_head_validation_results()
-
+model.reset_hooks()
+plot_early_head_validation_results()
 ```
 
 <details>
@@ -3257,7 +3206,7 @@ def get_attn_scores(
     else:
         raise ValueError(f"Unknown head type {head_type}")
 
-    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device="cuda", dtype=t.float32)
+    results = t.zeros(model.cfg.n_layers, model.cfg.n_heads, device=device, dtype=t.float32)
     for layer in range(model.cfg.n_layers):
         for head in range(model.cfg.n_heads):
             attn_scores: Float[Tensor, "batch head dest src"] = cache["pattern", layer]
@@ -3265,6 +3214,17 @@ def get_attn_scores(
             results[layer, head] = avg_attn_on_duplicates
 
     return results
+```
+```python
+    seq_len: int, 
+    batch: int = 1
+    '''
+    Generates a sequence of repeated random tokens (no start token).
+    '''
+    rep_tokens_half = t.randint(0, model.cfg.d_vocab, (batch, seq_len), dtype=t.int64)
+    rep_tokens = t.cat([rep_tokens_half, rep_tokens_half], dim=-1).to(device)
+    return rep_tokens
+
 ```
 </details>
 
@@ -3329,6 +3289,17 @@ Can you think of a way to solve this problem? After you've considered this, you 
 
 We ablate with the mean of the ABC dataset rather than the IOI dataset. This removes the problem of averages still containing relevant information from solving the IOI task.
 
+```python
+    seq_len: int, 
+    batch: int = 1
+    '''
+    Generates a sequence of repeated random tokens (no start token).
+    '''
+    rep_tokens_half = t.randint(0, model.cfg.d_vocab, (batch, seq_len), dtype=t.int64)
+    rep_tokens = t.cat([rep_tokens_half, rep_tokens_half], dim=-1).to(device)
+    return rep_tokens
+
+```
 </details>
 
 One other complication - the sentences have different templates, and the positions of tokens like `S` and `IO` are not consistent across these templates (we avoided this problem in previous exercises by choosing a very small set of sentences, where all the important tokens had the same indices). An example of two templates with different positions:
@@ -3367,28 +3338,25 @@ If you want to attempt this task, then you can start with the code below. We def
 
 
 ```python
+CIRCUIT = {
+    "name mover": [(9, 9), (10, 0), (9, 6)],
+    "backup name mover": [(10, 10), (10, 6), (10, 2), (10, 1), (11, 2), (9, 7), (9, 0), (11, 9)],
+    "negative name mover": [(10, 7), (11, 10)],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (4, 11)],
+}
 
-if MAIN:
-    CIRCUIT = {
-        "name mover": [(9, 9), (10, 0), (9, 6)],
-        "backup name mover": [(10, 10), (10, 6), (10, 2), (10, 1), (11, 2), (9, 7), (9, 0), (11, 9)],
-        "negative name mover": [(10, 7), (11, 10)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-        "duplicate token": [(0, 1), (0, 10), (3, 0)],
-        "previous token": [(2, 2), (4, 11)],
-    }
-    
-    SEQ_POS_TO_KEEP = {
-        "name mover": "end",
-        "backup name mover": "end",
-        "negative name mover": "end",
-        "s2 inhibition": "end",
-        "induction": "S2",
-        "duplicate token": "S2",
-        "previous token": "S1+1",
-    }
-
+SEQ_POS_TO_KEEP = {
+    "name mover": "end",
+    "backup name mover": "end",
+    "negative name mover": "end",
+    "s2 inhibition": "end",
+    "induction": "S2",
+    "duplicate token": "S2",
+    "previous token": "S1+1",
+}
 ```
 
 To be clear, the things that we'll be mean-ablating are:
@@ -3417,96 +3385,6 @@ where `hook_name` can be a string or a filter function mapping strings to boolea
 
 
 ```python
-# FLAT SOLUTION NOINDENT
-# 
-def get_heads_and_posns_to_keep(
-    means_dataset: IOIDataset,
-    model: HookedTransformer,
-    circuit: Dict[str, List[Tuple[int, int]]],
-    seq_pos_to_keep: Dict[str, str],
-) -> Dict[int, Bool[Tensor, "batch seq head"]]:
-    '''
-    Returns a dictionary mapping layers to a boolean mask giving the indices of the 
-    z output which *shouldn't* be mean-ablated.
-
-    The output of this function will be used for the hook function that does ablation.
-    '''
-    heads_and_posns_to_keep = {}
-    batch, seq, n_heads = len(means_dataset), means_dataset.max_len, model.cfg.n_heads
-
-    for layer in range(model.cfg.n_layers):
-
-        mask = t.zeros(size=(batch, seq, n_heads))
-
-        for (head_type, head_list) in circuit.items():
-            seq_pos = seq_pos_to_keep[head_type]
-            indices = means_dataset.word_idx[seq_pos]
-            for (layer_idx, head_idx) in head_list:
-                if layer_idx == layer:
-                    mask[:, indices, head_idx] = 1
-
-        heads_and_posns_to_keep[layer] = mask.bool()
-
-    return heads_and_posns_to_keep
-
-    
-def hook_fn_mask_z(
-    z: Float[Tensor, "batch seq head d_head"],
-    hook: HookPoint,
-    heads_and_posns_to_keep: Dict[int, Bool[Tensor, "batch seq head"]],
-    means: Float[Tensor, "layer batch seq head d_head"],
-) -> Float[Tensor, "batch seq head d_head"]:
-    '''
-    Hook function which masks the z output of a transformer head.
-
-    heads_and_posns_to_keep
-        Dict created with the get_heads_and_posns_to_keep function. This tells
-        us where to mask.
-
-    means
-        Tensor of mean z values of the means_dataset over each group of prompts
-        with the same template. This tells us what values to mask with.
-    '''
-    # Get the mask for this layer, and add d_head=1 dimension so it broadcasts correctly
-    mask_for_this_layer = heads_and_posns_to_keep[hook.layer()].unsqueeze(-1).to(z.device)
-
-    # Set z values to the mean 
-    z = t.where(mask_for_this_layer, z, means[hook.layer()])
-
-    return z
-
-
-def compute_means_by_template(
-    means_dataset: IOIDataset, 
-    model: HookedTransformer
-) -> Float[Tensor, "layer batch seq head_idx d_head"]:
-    '''
-    Returns the mean of each head's output over the means dataset. This mean is
-    computed separately for each group of prompts with the same template (these
-    are given by means_dataset.groups).
-    '''
-    # Cache the outputs of every head
-    _, means_cache = model.run_with_cache(
-        means_dataset.toks.long(),
-        return_type=None,
-        names_filter=lambda name: name.endswith("z"),
-    )
-    # Create tensor to store means
-    n_layers, n_heads, d_head = model.cfg.n_layers, model.cfg.n_heads, model.cfg.d_head
-    batch, seq_len = len(means_dataset), means_dataset.max_len
-    means = t.zeros(size=(n_layers, batch, seq_len, n_heads, d_head), device=model.cfg.device)
-
-    # Get set of different templates for this data
-    for layer in range(model.cfg.n_layers):
-        z_for_this_layer: Float[Tensor, "batch seq head d_head"] = means_cache[utils.get_act_name("z", layer)]
-        for template_group in means_dataset.groups:
-            z_for_this_template = z_for_this_layer[template_group]
-            z_means_for_this_template = einops.reduce(z_for_this_template, "batch seq head d_head -> seq head d_head", "mean")
-            means[layer, template_group] = z_means_for_this_template
-
-    return means
-
-
 def add_mean_ablation_hook(
     model: HookedTransformer, 
     means_dataset: IOIDataset, 
@@ -3523,29 +3401,7 @@ def add_mean_ablation_hook(
     except for a subset of heads and sequence positions as specified by the circuit
     and seq_pos_to_keep dicts.
     '''
-    
-    model.reset_hooks(including_permanent=True)
-
-    # Compute the mean of each head's output on the ABC dataset, grouped by template
-    means = compute_means_by_template(means_dataset, model)
-    
-    # Convert this into a boolean map
-    heads_and_posns_to_keep = get_heads_and_posns_to_keep(means_dataset, model, circuit, seq_pos_to_keep)
-
-    # Get a hook function which will patch in the mean z values for each head, at 
-    # all positions which aren't important for the circuit
-    hook_fn = partial(
-        hook_fn_mask_z, 
-        heads_and_posns_to_keep=heads_and_posns_to_keep, 
-        means=means
-    )
-
-    # Apply hook
-    model.add_hook(lambda name: name.endswith("z"), hook_fn, is_permanent=is_permanent)
-
-    return model
-# FLAT SOLUTION END
-
+    pass
 ```
 
 To test whether your function works, you can use the function provided to you, and see if the logit difference from your implementation of the circuit matches this one:
@@ -3555,26 +3411,20 @@ To test whether your function works, you can use the function provided to you, a
 import part3_indirect_object_identification.ioi_circuit_extraction as ioi_circuit_extraction
 
 
-if MAIN:
-    model = ioi_circuit_extraction.add_mean_ablation_hook(model, means_dataset=abc_dataset, circuit=CIRCUIT, seq_pos_to_keep=SEQ_POS_TO_KEEP)
-    
-    ioi_logits_minimal = model(ioi_dataset.toks)
-    
-    print(f"Average logit difference (IOI dataset, using entire model): {logits_to_ave_logit_diff_2(ioi_logits_original):.4f}")
-    print(f"Average logit difference (IOI dataset, only using circuit): {logits_to_ave_logit_diff_2(ioi_logits_minimal):.4f}")
+model = ioi_circuit_extraction.add_mean_ablation_hook(model, means_dataset=abc_dataset, circuit=CIRCUIT, seq_pos_to_keep=SEQ_POS_TO_KEEP)
 
-```
+ioi_logits_minimal = model(ioi_dataset.toks)
 
-```python
+print(f"Average logit difference (IOI dataset, using entire model): {logits_to_ave_logit_diff_2(ioi_logits_original):.4f}")
+print(f"Average logit difference (IOI dataset, only using circuit): {logits_to_ave_logit_diff_2(ioi_logits_minimal):.4f}")
 
-if MAIN:
-    model = add_mean_ablation_hook(model, means_dataset=abc_dataset, circuit=CIRCUIT, seq_pos_to_keep=SEQ_POS_TO_KEEP)
-    
-    ioi_logits_minimal = model(ioi_dataset.toks)
-    
-    print(f"Average logit difference (IOI dataset, using entire model): {logits_to_ave_logit_diff_2(ioi_logits_original):.4f}")
-    print(f"Average logit difference (IOI dataset, only using circuit): {logits_to_ave_logit_diff_2(ioi_logits_minimal):.4f}")
 
+model = add_mean_ablation_hook(model, means_dataset=abc_dataset, circuit=CIRCUIT, seq_pos_to_keep=SEQ_POS_TO_KEEP)
+
+ioi_logits_minimal = model(ioi_dataset.toks)
+
+print(f"Average logit difference (IOI dataset, using entire model): {logits_to_ave_logit_diff_2(ioi_logits_original):.4f}")
+print(f"Average logit difference (IOI dataset, only using circuit): {logits_to_ave_logit_diff_2(ioi_logits_minimal):.4f}")
 ```
 
 You should find that the logit difference only drops by a small amount, and is still high enough to represent a high likelihood ratio favouring the IO token over S.
@@ -3790,37 +3640,34 @@ Again, this exercise is very challenging and is designed to be done with minimal
 
 
 ```python
-
-if MAIN:
-    K_FOR_EACH_COMPONENT = {
-        (9, 9): set(),
-        (10, 0): {(9, 9)},
-        (9, 6): {(9, 9), (10, 0)},
-        (10, 7): {(11, 10)},
-        (11, 10): {(10, 7)},
-        (8, 10): {(7, 9), (8, 6), (7, 3)},
-        (7, 9): {(8, 10), (8, 6), (7, 3)},
-        (8, 6): {(7, 9), (8, 10), (7, 3)},
-        (7, 3): {(7, 9), (8, 10), (8, 6)},
-        (5, 5): {(5, 9), (6, 9), (5, 8)},
-        (5, 9): {(11, 10), (10, 7)},
-        (6, 9): {(5, 9), (5, 5), (5, 8)},
-        (5, 8): {(11, 10), (10, 7)},
-        (0, 1): {(0, 10), (3, 0)},
-        (0, 10): {(0, 1), (3, 0)},
-        (3, 0): {(0, 1), (0, 10)},
-        (4, 11): {(2, 2)},
-        (2, 2): {(4, 11)},
-        (11, 2): {(9, 9), (10, 0), (9, 6)},
-        (10, 6): {(9, 9), (10, 0), (9, 6), (11, 2)},
-        (10, 10): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6)},
-        (10, 2): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6), (10, 10)},
-        (9, 7): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6), (10, 10), (10, 2)},
-        (10, 1): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6), (10, 10), (10, 2), (9, 7)},
-        (11, 9): {(9, 9), (10, 0), (9, 6), (9, 0)},
-        (9, 0): {(9, 9), (10, 0), (9, 6), (11, 9)},
-    }
-
+K_FOR_EACH_COMPONENT = {
+    (9, 9): set(),
+    (10, 0): {(9, 9)},
+    (9, 6): {(9, 9), (10, 0)},
+    (10, 7): {(11, 10)},
+    (11, 10): {(10, 7)},
+    (8, 10): {(7, 9), (8, 6), (7, 3)},
+    (7, 9): {(8, 10), (8, 6), (7, 3)},
+    (8, 6): {(7, 9), (8, 10), (7, 3)},
+    (7, 3): {(7, 9), (8, 10), (8, 6)},
+    (5, 5): {(5, 9), (6, 9), (5, 8)},
+    (5, 9): {(11, 10), (10, 7)},
+    (6, 9): {(5, 9), (5, 5), (5, 8)},
+    (5, 8): {(11, 10), (10, 7)},
+    (0, 1): {(0, 10), (3, 0)},
+    (0, 10): {(0, 1), (3, 0)},
+    (3, 0): {(0, 1), (0, 10)},
+    (4, 11): {(2, 2)},
+    (2, 2): {(4, 11)},
+    (11, 2): {(9, 9), (10, 0), (9, 6)},
+    (10, 6): {(9, 9), (10, 0), (9, 6), (11, 2)},
+    (10, 10): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6)},
+    (10, 2): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6), (10, 10)},
+    (9, 7): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6), (10, 10), (10, 2)},
+    (10, 1): {(9, 9), (10, 0), (9, 6), (11, 2), (10, 6), (10, 10), (10, 2), (9, 7)},
+    (11, 9): {(9, 9), (10, 0), (9, 6), (9, 0)},
+    (9, 0): {(9, 9), (10, 0), (9, 6), (11, 9)},
+}
 ```
 
 Also, given a dictionary `minimality_scores` (which maps heads to their scores), the following code will produce a plot that looks like the one from the paper:
@@ -3855,11 +3702,75 @@ def plot_minimal_set_results(minimality_scores: Dict[Tuple[int, int], float]):
         hovermode="x unified"
     )
 
+
+# YOUR CODE HERE - define the `minimality_scores` dictionary, to be used in the plot function given above
+
+plot_minimal_set_results(minimality_scores)
 ```
 
+<details>
+<summary>Hint (docstrings of some functions which will be useful for your main function)</summary>
+
 ```python
-# FLAT SOLUTION NOINDENT
-# YOUR CODE HERE - define the `minimality_scores` dictionary, to be used in the plot function given above
+def get_score(
+    model: HookedTransformer, 
+    ioi_dataset: IOIDataset, 
+    abc_dataset: IOIDataset,
+    K: Set[Tuple[int, int]],
+    C: Dict[str, List[Tuple[int, int]]],
+) -> float:
+    '''
+    Returns the value F(C \ K), where F is the logit diff, C is the
+    core circuit, and K is the set of circuit components to remove.
+    '''
+    pass
+
+
+def get_minimality_score(
+    model: HookedTransformer,
+    ioi_dataset: IOIDataset,
+    abc_dataset: IOIDataset,
+    v: Tuple[int, int],
+    K: Set[Tuple[int, int]],
+    C: Dict[str, List[Tuple[int, int]]] = CIRCUIT,
+) -> float:
+    '''
+    Returns the value | F(C \ K_union_v) - F(C | K) |, where F is 
+    the logit diff, C is the core circuit, K is the set of circuit
+    components to remove, and v is a head (not in K).
+    '''
+    pass
+
+
+def get_all_minimality_scores(
+    model: HookedTransformer,
+    ioi_dataset: IOIDataset = ioi_dataset,
+    abc_dataset: IOIDataset = abc_dataset,
+    k_for_each_component: Dict = K_FOR_EACH_COMPONENT
+) -> Dict[Tuple[int, int], float]:
+    '''
+    Returns dict of minimality scores for every head in the model (as 
+    a fraction of F(M), the logit diff of the full model).
+
+    Warning - this resets all hooks at the end (including permanent).
+    '''
+    pass
+
+
+minimality_scores = get_all_minimality_scores(model)
+
+plot_minimal_set_results(minimality_scores)
+```
+
+The output of the third function can be plotted using the plotting function given above.
+
+</details>
+
+
+<details>
+<summary>Solution</summary>
+
+```python
 def get_score(
     model: HookedTransformer, 
     ioi_dataset: IOIDataset, 
@@ -3926,85 +3837,7 @@ def get_all_minimality_scores(
     model.reset_hooks(including_permanent=True)
 
     return minimality_scores
-
-
-
-if MAIN:
-    minimality_scores = get_all_minimality_scores(model)
-    # FLAT SOLUTION END
-
 ```
-
-```python
-
-if MAIN:
-    plot_minimal_set_results(minimality_scores)
-
-```
-
-<details>
-<summary>Hint (docstrings of some functions which will be useful for your main function)</summary>
-
-```python
-def get_score(
-    model: HookedTransformer, 
-    ioi_dataset: IOIDataset, 
-    abc_dataset: IOIDataset,
-    K: Set[Tuple[int, int]],
-    C: Dict[str, List[Tuple[int, int]]],
-) -> float:
-    '''
-    Returns the value F(C \ K), where F is the logit diff, C is the
-    core circuit, and K is the set of circuit components to remove.
-    '''
-    pass
-
-
-def get_minimality_score(
-    model: HookedTransformer,
-    ioi_dataset: IOIDataset,
-    abc_dataset: IOIDataset,
-    v: Tuple[int, int],
-    K: Set[Tuple[int, int]],
-    C: Dict[str, List[Tuple[int, int]]] = CIRCUIT,
-) -> float:
-    '''
-    Returns the value | F(C \ K_union_v) - F(C | K) |, where F is 
-    the logit diff, C is the core circuit, K is the set of circuit
-    components to remove, and v is a head (not in K).
-    '''
-    pass
-
-
-def get_all_minimality_scores(
-    model: HookedTransformer,
-    ioi_dataset: IOIDataset = ioi_dataset,
-    abc_dataset: IOIDataset = abc_dataset,
-    k_for_each_component: Dict = K_FOR_EACH_COMPONENT
-) -> Dict[Tuple[int, int], float]:
-    '''
-    Returns dict of minimality scores for every head in the model (as 
-    a fraction of F(M), the logit diff of the full model).
-
-    Warning - this resets all hooks at the end (including permanent).
-    '''
-    pass
-
-
-minimality_scores = get_all_minimality_scores(model)
-
-plot_minimal_set_results(minimality_scores)
-```
-
-The output of the third function can be plotted using the plotting function given above.
-
-</details>
-
-
-<details>
-<summary>Solution</summary>
-
-
 </details>
 
 
@@ -4038,7 +3871,7 @@ def section_6():
 
     st.markdown(r"""
 
-# 5️⃣ Bonus / exploring anomalies
+# 6️⃣ Bonus / exploring anomalies
 
 
 > ##### Learning objectives
@@ -4079,35 +3912,32 @@ First, in the cell below, you should visualise the attention patterns of the ind
 
 
 ```python
+model.reset_hooks(including_permanent=True)
 
-if MAIN:
-    model.reset_hooks(including_permanent=True)
-    
-    attn_heads = [(5, 5), (6, 9)]
-    
-    # Get repeating sequences (note we could also take mean over larger batch)
-    batch = 1
-    seq_len = 15
-    rep_tokens = generate_repeated_tokens(model, seq_len, batch)
-    
-    # Run cache (we only need attention patterns for layers 5 and 6)
-    _, cache = model.run_with_cache(
-        rep_tokens,
-        return_type = None,
-        names_filter = lambda name: name.endswith("pattern") and any(f".{layer}." in name for layer, head in attn_heads)
-    )
-    
-    # Display results
-    attn = t.stack([
-        cache["pattern", layer][0, head]
-        for (layer, head) in attn_heads
-    ])
-    cv.attention.attention_patterns(
-        tokens = model.to_str_tokens(rep_tokens[0]),
-        attention = attn,
-        attention_head_names = [f"{layer}.{head}" for (layer, head) in attn_heads]
-    )
+attn_heads = [(5, 5), (6, 9)]
 
+# Get repeating sequences (note we could also take mean over larger batch)
+batch = 1
+seq_len = 15
+rep_tokens = generate_repeated_tokens(model, seq_len, batch)
+
+# Run cache (we only need attention patterns for layers 5 and 6)
+_, cache = model.run_with_cache(
+    rep_tokens,
+    return_type = None,
+    names_filter = lambda name: name.endswith("pattern") and any(f".{layer}." in name for layer, head in attn_heads)
+)
+
+# Display results
+attn = t.stack([
+    cache["pattern", layer][0, head]
+    for (layer, head) in attn_heads
+])
+cv.attention.attention_patterns(
+    tokens = model.to_str_tokens(rep_tokens[0]),
+    attention = attn,
+    attention_head_names = [f"{layer}.{head}" for (layer, head) in attn_heads]
+)
 ```
 
 One implication of this is that it's useful to categories heads according to whether they occur in simpler circuits, so that as we look for more complex circuits we can easily look for them. This is Hooked to do here! An interesting fact about induction heads is that they work on a sequence of repeated random tokens - notable for being wildly off distribution from the natural language GPT-2 was trained on. Being able to predict a model's behaviour off distribution is a good mark of success for mechanistic interpretability! This is a good sanity check for whether a head is an induction head or not. 
@@ -4138,25 +3968,17 @@ We expect this to worsen performance, because it interrupts the duplicate token 
 
 
 ```python
+model.reset_hooks(including_permanent=True)
 
-if MAIN:
-    model.reset_hooks(including_permanent=True)
-    
-    # YOUR CODE HERE - create `induction_head_key_path_patching_results` 
+# YOUR CODE HERE - create `induction_head_key_path_patching_results` 
 
-```
-
-```python
-
-if MAIN:
-    imshow(
-        100 * induction_head_key_path_patching_results,
-        title="Direct effect on Induction Heads' keys", 
-        labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
-        coloraxis=dict(colorbar_ticksuffix = "%"),
-        width=600,
-    )
-
+imshow(
+    100 * induction_head_key_path_patching_results,
+    title="Direct effect on Induction Heads' keys", 
+    labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
+    coloraxis=dict(colorbar_ticksuffix = "%"),
+    width=600,
+)
 ```
 
 <details>
@@ -4216,43 +4038,34 @@ Let's test this! Let's ablate the most important name mover (which is `9.9`, as 
 
 
 ```python
+# Remove any ablations from the model, and define some useful variables
+model.reset_hooks(including_permanent=True)
 
-if MAIN:
-    model.reset_hooks(including_permanent=True)
+ioi_logits, ioi_cache = model.run_with_cache(ioi_dataset.toks)
+original_average_logit_diff = logits_to_ave_logit_diff_2(ioi_logits)
+
+s_unembeddings = model.W_U.T[ioi_dataset.s_tokenIDs]
+io_unembeddings = model.W_U.T[ioi_dataset.io_tokenIDs]
+logit_diff_directions: Float[Tensor, "batch d_model"] =  io_unembeddings - s_unembeddings
+
+per_head_residual, labels = ioi_cache.stack_head_results(layer=-1, return_labels=True)
+per_head_residual = einops.rearrange(
+    per_head_residual[:, t.arange(len(ioi_dataset)).to(device), ioi_dataset.word_idx["end"].to(device)], 
+    "(layer head) batch d_model -> layer head batch d_model", 
+    layer=model.cfg.n_layers
+)
+
+per_head_logit_diffs = residual_stack_to_logit_diff(per_head_residual, ioi_cache, logit_diff_directions)
+
+
+# Find the top name mover head (i.e. the one which increases loss by most when it gets ablated)
+top_layer, top_head = topk_of_Nd_tensor(per_head_logit_diffs, k=1)[0]
+print(f"Top Name Mover to ablate: {top_layer}.{top_head}")
+
+
+# Defining hook functions & datasets for ablation
+abc_means = ioi_circuit_extraction.compute_means_by_template(abc_dataset, model)[top_layer]
     
-    ioi_logits, ioi_cache = model.run_with_cache(ioi_dataset.toks)
-    original_average_logit_diff = logits_to_ave_logit_diff_2(ioi_logits)
-
-```
-
-```python
-
-if MAIN:
-    s_unembeddings = model.W_U.T[ioi_dataset.s_tokenIDs]
-    io_unembeddings = model.W_U.T[ioi_dataset.io_tokenIDs]
-    logit_diff_directions: Float[Tensor, "batch d_model"] =  io_unembeddings - s_unembeddings
-    
-    per_head_residual, labels = ioi_cache.stack_head_results(layer=-1, return_labels=True)
-    per_head_residual = einops.rearrange(
-        per_head_residual[:, t.arange(len(ioi_dataset)).to(device), ioi_dataset.word_idx["end"].to(device)], 
-        "(layer head) batch d_model -> layer head batch d_model", 
-        layer=model.cfg.n_layers
-    )
-    
-    per_head_logit_diffs = residual_stack_to_logit_diff(per_head_residual, ioi_cache, logit_diff_directions)
-    
-    top_layer, top_head = topk_of_Nd_tensor(per_head_logit_diffs, k=1)[0]
-    print(f"Top Name Mover to ablate: {top_layer}.{top_head}")
-
-```
-
-```python
-# Getting means we can use to ablate
-
-if MAIN:
-    abc_means = ioi_circuit_extraction.compute_means_by_template(abc_dataset, model)[top_layer]
-    
-    # Define hook function and add to model
 def ablate_top_head_hook(z: Float[Tensor, "batch pos head_index d_head"], hook):
     '''
     Ablates hook by patching in results
@@ -4261,73 +4074,56 @@ def ablate_top_head_hook(z: Float[Tensor, "batch pos head_index d_head"], hook):
     return z
 
 
-if MAIN:
-    model.add_hook(utils.get_act_name("z", top_layer), ablate_top_head_hook)
-    
-    # Runs the model, temporarily adds caching hooks and then removes *all* hooks after running, including the ablation hook.
-    ablated_logits, ablated_cache = model.run_with_cache(ioi_dataset.toks)
-    rprint("\n".join([
-        f"                            Original logit diff: {original_average_logit_diff:.4f}",
-        f"Direct Logit Attribution of top name mover head: {per_head_logit_diffs[top_layer, top_head]:.4f}",
-        f"   Naive prediction of post ablation logit diff: {original_average_logit_diff - per_head_logit_diffs[top_layer, top_head]:.4f}",
-        f"      Logit diff after ablating L{top_layer}H{top_head}: {logits_to_ave_logit_diff_2(ablated_logits):.4f}",
-    ]))
+# Apply ablation hook, get new cache, and print out results
+model.add_hook(utils.get_act_name("z", top_layer), ablate_top_head_hook)
+ablated_logits, ablated_cache = model.run_with_cache(ioi_dataset.toks)
 
+rprint("\n".join([
+    f"{original_average_logit_diff:.4f} = Original logit diff",
+    f"{per_head_logit_diffs[top_layer, top_head]:.4f} = Direct Logit Attribution of top name mover head",
+    f"{original_average_logit_diff - per_head_logit_diffs[top_layer, top_head]:.4f} = Naive prediction of post ablation logit diff",
+    f"{logits_to_ave_logit_diff_2(ablated_logits):.4f} = Logit diff after ablating L{top_layer}H{top_head}",
+]))
 ```
 
-```python
-
-if MAIN:
-    make_table(
-        cols = [
-            "Original logit diff", "Direct Logit Attribution of top name mover head", "Naive prediction of post ablation logit diff", f"Logit diff after ablating L{top_layer}H{top_head}",
-            original_average_logit_diff, per_head_logit_diffs[top_layer, top_head]
-        ]
-    )
-
-```
-
-What's going on here? We calculate the logit diff for our full model, and how much of that is coming directly from head `9.9`. Given this, we might guess that when we ablate this head, the logit diff will drop down to `3.07768 - 1.7230 = 1.3538`. Instead, we find that the logit diff is `2.8116`, in other words it drops much less than we expected.
+What's going on here? We calculate the logit diff for our full model, and how much of that is coming directly from head `9.9`. Given this, we come up with an estimate for what the logit diff will fall to when we ablate this head. In fact, performance is **much** better than this naive prediction.
 
 Why is this happening? As before, we can look at the direct logit attribution of each head to get a sense of what's going on.
 
 
 ```python
+per_head_ablated_residual, labels = ablated_cache.stack_head_results(layer=-1, return_labels=True)
+per_head_ablated_residual = einops.rearrange(
+    per_head_ablated_residual[:, t.arange(len(ioi_dataset)).to(device), ioi_dataset.word_idx["end"].to(device)], 
+    "(layer head) batch d_model -> layer head batch d_model", 
+    layer=model.cfg.n_layers
+)
+per_head_ablated_logit_diffs = residual_stack_to_logit_diff(per_head_ablated_residual, ablated_cache, logit_diff_directions)
+per_head_ablated_logit_diffs = per_head_ablated_logit_diffs.reshape(model.cfg.n_layers, model.cfg.n_heads)
 
-if MAIN:
-    per_head_ablated_residual, labels = ablated_cache.stack_head_results(layer=-1, return_labels=True)
-    per_head_ablated_residual = einops.rearrange(
-        per_head_ablated_residual[:, t.arange(len(ioi_dataset)).to(device), ioi_dataset.word_idx["end"].to(device)], 
-        "(layer head) batch d_model -> layer head batch d_model", 
-        layer=model.cfg.n_layers
-    )
-    per_head_ablated_logit_diffs = residual_stack_to_logit_diff(per_head_ablated_residual, ablated_cache, logit_diff_directions)
-    per_head_ablated_logit_diffs = per_head_ablated_logit_diffs.reshape(model.cfg.n_layers, model.cfg.n_heads)
-    
-    imshow(
-        t.stack([
-            per_head_logit_diffs, 
-            per_head_ablated_logit_diffs, 
-            per_head_ablated_logit_diffs - per_head_logit_diffs
-        ]), 
-        title="Direct logit contribution by head, pre / post ablation",
-        labels={"x":"Head", "y":"Layer"},
-        facet_col=0,
-        facet_labels=["No ablation", "9.9 is ablated", "Change in head contribution post-ablation"],
-    )
-    
-    scatter(
-        y=per_head_logit_diffs.flatten(), 
-        x=per_head_ablated_logit_diffs.flatten(), 
-        hover_name=labels, 
-        range_x=(-1, 1), 
-        range_y=(-2, 2), 
-        labels={"x": "Ablated", "y": "Original"},
-        title="Original vs Post-Ablation Direct Logit Attribution of Heads",
-        width=600,
-        add_line="y=x"
-    )
+imshow(
+    t.stack([
+        per_head_logit_diffs, 
+        per_head_ablated_logit_diffs, 
+        per_head_ablated_logit_diffs - per_head_logit_diffs
+    ]), 
+    title="Direct logit contribution by head, pre / post ablation",
+    labels={"x":"Head", "y":"Layer"},
+    facet_col=0,
+    facet_labels=["No ablation", "9.9 is ablated", "Change in head contribution post-ablation"],
+)
 
+scatter(
+    y=per_head_logit_diffs.flatten(), 
+    x=per_head_ablated_logit_diffs.flatten(), 
+    hover_name=labels, 
+    range_x=(-1, 1), 
+    range_y=(-2, 2), 
+    labels={"x": "Ablated", "y": "Original"},
+    title="Original vs Post-Ablation Direct Logit Attribution of Heads",
+    width=600,
+    add_line="y=x"
+)
 ```
 
 The first plots show us that, after we ablate head `9.9`, while its direct contribution to the logit diff falls (obviously), a lot of contributions from other heads (particularly in layer 10) actually increase. The second plot shows this in a different way (the distinctive heads in the right hand heatmap are the same as the heads lying well below the y=x line in the scatter plot).
@@ -4336,25 +4132,17 @@ One natural hypothesis is that this is because the final LayerNorm scaling has c
 
 
 ```python
+ln_scaling_no_ablation = ioi_cache["ln_final.hook_scale"][t.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"]].squeeze()
+ln_scaling_ablated = ablated_cache["ln_final.hook_scale"][t.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"]].squeeze()
 
-if MAIN:
-    ln_scaling_no_ablation = ioi_cache["ln_final.hook_scale"][t.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"]].squeeze()
-    ln_scaling_ablated = ablated_cache["ln_final.hook_scale"][t.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"]].squeeze()
-
-```
-
-```python
-
-if MAIN:
-    scatter(
-        y=ln_scaling_ablated,
-        x=ln_scaling_no_ablation,
-        labels={"x": "No ablation", "y": "Ablation"},
-        title=f"Final LN scaling factors compared (ablation vs no ablation)<br>Average ratio = {(ln_scaling_no_ablation / ln_scaling_ablated).mean():.4f}",
-        width=700,
-        add_line="y=x"
-    )
-
+scatter(
+    y=ln_scaling_ablated,
+    x=ln_scaling_no_ablation,
+    labels={"x": "No ablation", "y": "Ablation"},
+    title=f"Final LN scaling factors compared (ablation vs no ablation)<br>Average ratio = {(ln_scaling_no_ablation / ln_scaling_ablated).mean():.4f}",
+    width=700,
+    add_line="y=x"
+)
 ```
 
 **Exercise to the reader:** Can you finish off this analysis? What's going on here? Why are the backup name movers changing their behaviour? Why is one negative name mover becoming significantly less important?
@@ -4399,72 +4187,62 @@ We use the `gen_flipped_prompts` method to generate each of these datasets:
 
 
 ```python
-
-if MAIN:
-    datasets: List[Tuple[Tuple, str, IOIDataset]] = [
-        ((0, 0), "original", ioi_dataset),
-        ((1, 0), "random token", ioi_dataset.gen_flipped_prompts("ABB->CDD, BAB->DCD")),
-        ((2, 0), "inverted token", ioi_dataset.gen_flipped_prompts("ABB->BAA, BAB->ABA")),
-        ((0, 1), "inverted position", ioi_dataset.gen_flipped_prompts("ABB->BAB, BAB->ABB")),
-        ((1, 1), "inverted position, random token", ioi_dataset.gen_flipped_prompts("ABB->DCD, BAB->CDD")),
-        ((2, 1), "inverted position, inverted token", ioi_dataset.gen_flipped_prompts("ABB->ABA, BAB->BAA")),
-    ]
-
+datasets: List[Tuple[Tuple, str, IOIDataset]] = [
+    ((0, 0), "original", ioi_dataset),
+    ((1, 0), "random token", ioi_dataset.gen_flipped_prompts("ABB->CDD, BAB->DCD")),
+    ((2, 0), "inverted token", ioi_dataset.gen_flipped_prompts("ABB->BAA, BAB->ABA")),
+    ((0, 1), "inverted position", ioi_dataset.gen_flipped_prompts("ABB->BAB, BAB->ABB")),
+    ((1, 1), "inverted position, random token", ioi_dataset.gen_flipped_prompts("ABB->DCD, BAB->CDD")),
+    ((2, 1), "inverted position, inverted token", ioi_dataset.gen_flipped_prompts("ABB->ABA, BAB->BAA")),
+]
 ```
 
 *Note - the purpose of the type annotation for `datasets` is so that, when we iterate through datasets, the type checker can identify the third item in each iterate as an `IOIDataset`, and autocomplete methods for us.*
 
 
 ```python
+results = t.zeros(3, 2).to(device)
 
-if MAIN:
-    results = t.zeros(3, 2).to(device)
+s2_inhibition_heads = CIRCUIT["s2 inhibition"]
+layers = set(layer for layer, head in s2_inhibition_heads)
+
+names_filter=lambda name: name in [utils.get_act_name("z", layer) for layer in layers]
     
-    s2_inhibition_heads = CIRCUIT["s2 inhibition"]
-    layers = set(layer for layer, head in s2_inhibition_heads)
-    
-    names_filter=lambda name: name in [utils.get_act_name("z", layer) for layer in layers]
-    
+
 def patching_hook_fn(z: Float[Tensor, "batch seq head d_head"], hook: HookPoint, cache: ActivationCache):
     heads_to_patch = [head for layer, head in s2_inhibition_heads if layer == hook.layer()]
     z[:, :, heads_to_patch] = cache[hook.name][:, :, heads_to_patch]
     return z
 
 
-if MAIN:
-    for ((row, col), desc, dataset) in datasets:
-    
-        # Get cache of values from the modified dataset
-        _, cache_for_patching = model.run_with_cache(
-            dataset.toks,
-            names_filter=names_filter,
-            return_type=None
-        )
-    
-        # Run model on IOI dataset, but patch S-inhibition heads with signals from modified dataset
-        patched_logits = model.run_with_hooks(
-            ioi_dataset.toks,
-            fwd_hooks=[(names_filter, partial(patching_hook_fn, cache=cache_for_patching))]
-        )
-    
-        # Get logit diff for patched results
-        # Note, we still use IOI dataset for our "correct answers" reference point
-        results[row, col] = logits_to_ave_logit_diff_2(patched_logits, ioi_dataset)
+for ((row, col), desc, dataset) in datasets:
 
-```
-
-```python
-
-if MAIN:
-    imshow(
-        results, 
-        labels={"x": "Positional signal", "y": "Token signal"}, 
-        x=["Original", "Inverted"], 
-        y=["Original", "Random", "Inverted"], 
-        title="Logit diff after changing all S2 inhibition heads' output signals via patching",
-        text_auto=".2f"
+    # Get cache of values from the modified dataset
+    _, cache_for_patching = model.run_with_cache(
+        dataset.toks,
+        names_filter=names_filter,
+        return_type=None
     )
 
+    # Run model on IOI dataset, but patch S-inhibition heads with signals from modified dataset
+    patched_logits = model.run_with_hooks(
+        ioi_dataset.toks,
+        fwd_hooks=[(names_filter, partial(patching_hook_fn, cache=cache_for_patching))]
+    )
+
+    # Get logit diff for patched results
+    # Note, we still use IOI dataset for our "correct answers" reference point
+    results[row, col] = logits_to_ave_logit_diff_2(patched_logits, ioi_dataset)
+
+
+imshow(
+    results, 
+    labels={"x": "Positional signal", "y": "Token signal"}, 
+    x=["Original", "Inverted"], 
+    y=["Original", "Random", "Inverted"], 
+    title="Logit diff after changing all S2 inhibition heads' output signals via patching",
+    text_auto=".2f"
+)
 ```
 
 What are your interpretations of this plot?
@@ -4509,11 +4287,27 @@ You can do this by creating a `results` tensor of shape `(M, 3, 2)` where `M` is
 
 
 ```python
+results = t.zeros(len(CIRCUIT["s2 inhibition"]), 3, 2).to(device)
+# YOUR CODE HERE - fill in results!
 
-if MAIN:
-    results = t.zeros(len(CIRCUIT["s2 inhibition"]), 3, 2).to(device)
-    # Your code here - fill in results!
-    
+
+imshow(
+    (results - results[0, 0, 0]) / results[0, 0, 0], 
+    labels={"x": "Positional signal", "y": "Token signal"}, 
+    x=["Original", "Inverted"], 
+    y=["Original", "Random", "Inverted"], 
+    title="Logit diff after patching individual S2 inhibition heads (as proportion of clean logit diff)",
+    facet_col=0,
+    facet_labels=[f"{layer}.{head}" for (layer, head) in CIRCUIT["s2 inhibition"]],
+    facet_col_spacing = 0.08,
+    text_auto=".2f",
+)
+```
+
+<details>
+<summary>Solution</summary>
+
+```python
 def patching_hook_fn(
     z: Float[Tensor, "batch seq head d_head"], 
     hook: HookPoint, 
@@ -4523,59 +4317,6 @@ def patching_hook_fn(
     z[:, :, head] = cache[hook.name][:, :, head]
     return z
 
-
-if MAIN:
-    for i, (layer, head) in enumerate(CIRCUIT["s2 inhibition"]):
-    
-        model.reset_hooks(including_permanent=True)
-    
-        hook_name = utils.get_act_name("z", layer)
-    
-        for ((row, col), desc, dataset) in datasets:
-    
-            # Get cache of values from the modified dataset
-            _, cache_for_patching = model.run_with_cache(
-                dataset.toks,
-                names_filter=lambda name: name == hook_name,
-                return_type=None
-            )
-    
-            # Run model on IOI dataset, but patch S-inhibition heads with signals from modified dataset
-            patched_logits = model.run_with_hooks(
-                ioi_dataset.toks,
-                fwd_hooks=[(hook_name, partial(patching_hook_fn, cache=cache_for_patching, head=head))]
-            )
-    
-            # Get logit diff for patched results
-            # Note, we still use IOI dataset for our "correct answers" reference point
-            results[i, row, col] = logits_to_ave_logit_diff_2(patched_logits, ioi_dataset)
-
-```
-
-```python
-
-if MAIN:
-    imshow(
-        (results - results[0, 0, 0]) / results[0, 0, 0], 
-        labels={"x": "Positional signal", "y": "Token signal"}, 
-        x=["Original", "Inverted"], 
-        y=["Original", "Random", "Inverted"], 
-        title="Logit diff after patching individual S2 inhibition heads (as proportion of clean logit diff)",
-        facet_col=0,
-        facet_labels=[f"{layer}.{head}" for (layer, head) in CIRCUIT["s2 inhibition"]],
-        facet_col_spacing = 0.08,
-        text_auto=".2f",
-    )
-
-```
-
-<details>
-<summary>Solution</summary>
-
-```python
-def patching_hook_fn(z: Float[Tensor, "batch seq head d_head"], hook: HookPoint, cache: ActivationCache, head: int):
-    z[:, :, head] = cache[hook.name][:, :, head]
-    return z
 
 for i, (layer, head) in enumerate(CIRCUIT["s2 inhibition"]):
 
@@ -4663,7 +4404,7 @@ Here is a collection of links for further reading, which haven't already been me
 
 
 func_page_list = [
-    (section_0, "🏠 Home"),     (section_1, "1️⃣ Model & Task Setup"),     (section_2, "2️⃣ Logit Attribution"),     (section_3, "3️⃣ Activation Patching"),     (section_4, "4️⃣ Path Patching"),     (section_5, "5️⃣ Paper Replication"),     (section_6, "5️⃣ Bonus / exploring anomalies"), 
+    (section_0, "🏠 Home"),     (section_1, "1️⃣ Model & Task Setup"),     (section_2, "2️⃣ Logit Attribution"),     (section_3, "3️⃣ Activation Patching"),     (section_4, "4️⃣ Path Patching"),     (section_5, "5️⃣ Paper Replication"),     (section_6, "6️⃣ Bonus / exploring anomalies"), 
 ]
 
 func_list = [func for func, page in func_page_list]
