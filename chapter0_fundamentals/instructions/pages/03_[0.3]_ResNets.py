@@ -57,8 +57,6 @@ Today's exercises are probably the most directly relevant for the rest of the pr
 
 In part 1, we'll use the modules that we defined in previous exercises to build a basic CNN to classify MNIST images. We'll also learn how to train that CNN, using the very useful **PyTorch Lightning** module.
 
-This section should take **2-3 hours**.
-
 > ##### Learning Objectives
 >
 > * Learn how to assemble a convolutional neural network
@@ -68,8 +66,6 @@ This section should take **2-3 hours**.
 ### 2️⃣ Assembling ResNet
 
 In part 2, we'll start by defining a few more important modules (e.g. `BatchNorm2d` and `Sequential`), building on our work from yesterday. Then we'll build a much more complex architecture - a **residual neural network**, which uses a special type of connection called **skip connections**. 
-
-This section should take approximately **2-3 hours**.
 
 > ##### Learning Objectives
 > 
@@ -277,12 +273,13 @@ class ConvNet(nn.Module):
         self.flatten = Flatten()
         self.fc1 = Linear(in_features=7*7*64, out_features=128)
         self.fc2 = Linear(in_features=128, out_features=10)
+        self.relu3 = ReLU()
         
     def forward(self, x: t.Tensor) -> t.Tensor:
         # SOLUTION
         x = self.maxpool1(self.relu1(self.conv1(x)))
         x = self.maxpool2(self.relu2(self.conv2(x)))
-        x = self.fc2(self.fc1(self.flatten(x)))
+        x = self.fc2(self.relu3(self.fc1(self.flatten(x))))
         return x
 ```
 </details>
@@ -523,9 +520,9 @@ $$
 where $p_{n, c}$ is the probability the model assigns to class $c$ for sample $n$, and $y_{n}$ is the true label for this sample.
 
 <details>
-<summary>See this dropdown, if you're still confused about this formula, and how this relates to cross entropy.</summary>
+<summary>See this dropdown, if you're still confused about this formula, and how this relates to the information-theoretic general formula for cross entropy.</summary>
 
-The cross entropy between two probability distributions $p$ and $q$ is defined as:
+The cross entropy of a distribution $p$ relate to a distribution $q$ is:
 
 $$
 \begin{aligned}
@@ -534,6 +531,19 @@ H(q, p) &= -\sum_{n} q(n) \log p(n)
 $$
 
 In our case, $q$ is the true distribution (i.e. the one-hot encoded labels, which equals one for $n = y_n$, zero otherwise), and $p$ is our model's output. With these subsitutions, this formula becomes equivalent to the formula for $l$ given above.
+</details>
+
+<details>
+<summary>See this dropdown, if you're confused about how this is the same as the <a href="https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html#torch.nn.CrossEntropyLoss">PyTorch definition</a>.</summary>
+
+The PyTorch definition of cross entropy loss is:
+
+$$
+\ell(x, y)=\frac{1}{N}\sum_{n=1}^{N} l_n, \quad l_n=-\sum_{c=1}^C w_c \log \frac{\exp \left(x_{n, c}\right)}{\sum_{i=1}^C \exp \left(x_{n, i}\right)} y_{n, c}
+$$
+
+$w_c$ are the weights (which all equal one by default), $p_{n, c} = \frac{\exp \left(x_{n, c}\right)}{\sum_{i=1}^C \exp \left(x_{n, i}\right)}$ are the probabilities, and $y_{n, c}$ are the true labels (which are one-hot encoded, i.e. their value is one at the correct label $c$ and zero everywhere else). With this, the formula for $l_n$ reduces to the one we see above (i.e. the mean of the negative log probabilities).
+
 </details>
 
 The function `torch.functional.cross_entropy` expects the **unnormalized logits** as its first input, rather than probabilities. We get probabilities from logits by applying the softmax function:
@@ -575,10 +585,15 @@ Rather than including parts like backpropogation, training step and testing step
     * Note that we can omit the step `imgs = imgs.to(device)`, because Lightning automatically moves the data to the correct device
 * `configure_optimizers` - defines the optimizer(s) used during training. 
 
+These are the only two methods that **every** PyTorch Lightning training loop needs, although most of the time we also define a few other methods, including:
+
+* `forward`, to set the default behaviour of a forward pass (just like for a regular `nn.Module`). If we do this, it allows us to use `self(x)` as a forward pass in other methods (e.g. `training_step`, see below).
+* `train_dataloader`, which defines the training and validation dataloaders respectively. These are called automatically by `lightning.pytorch.Trainer` (see below) when we call the `fit` method.
+
 <details>
 <summary>Technical details - what is happening under the hood?</summary>
 
-Under the hood, when you train your model using `lightning.pytorch.Trainer` (see below), the following loop will be called:
+Under the hood, when you train your model using `lightning.pytorch.Trainer` and the `fit` method (see below), the following loop will be called:
 
 ```python
 model = LitModule()
@@ -592,29 +607,40 @@ for batch_idx, batch in enumerate(train_dataloader):
     optimizer.zero_grad()
 ```
 
+Note - `LightningModule` inherits from `torch.nn.Module`, which is why you can call things like `self.parameters()` rather than `self.convnet.parameters()` in the code below.
+
 </details>
 
 There are also a number of other methods which you can define to override the default behaviour of the training loop in other ways (e.g. validation sets, early stopping, saving and loading from checkpoints, GPU utilization). We'll look at some of these later on, but for now you don't need to worry about them.
+
+We've added docstrings for the methods below, but if you remove the docstrings and hover over the methods (in VSCode) then you can see the original library docstrings which contain more information.
 
 
 ```python
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import CSVLogger
 
-```
 
-```python
 class LitConvNet(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, batch_size: int, max_epochs: int, subset: int = 10):
         super().__init__()
         self.convnet = ConvNet()
+        self.batch_size = batch_size
+        self.max_epochs = max_epochs
+        self.trainset, self.testset = get_mnist(subset = 10)
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        '''
+        Here you should define the forward pass of your model.
+        '''
+        return self.convnet(x)
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
         '''
         Here you compute and return the training loss and some additional metrics for e.g. the progress bar or logger.
         '''
         imgs, labels = batch
-        logits = self.convnet(imgs)
+        logits = self(imgs)
         loss = F.cross_entropy(logits, labels)
         self.log("train_loss", loss)
         return loss
@@ -625,29 +651,25 @@ class LitConvNet(pl.LightningModule):
         '''
         optimizer = t.optim.Adam(self.parameters())
         return optimizer
+    
+    def train_dataloader(self):
+        '''
+        Return the training dataloader.
+        '''
+        return DataLoader(self.trainset, batch_size=self.batch_size, shuffle=True)
 
 ```
-
-*Note - we've added docstrings for these methods, but if you remove the docstrings and hover over the methods then you can see the "original docstrings" which contain more information.*
-
 
 Once you've created this class, you can use the `Trainer` class to train your model. Example code is provided below, which you should run. Don't worry about understanding all the logging text which gets printed when you run.
 
 
 ```python
-# Set batch size
+# Create the model & training system
 
 if MAIN:
     batch_size = 64
     max_epochs = 3
-    
-    # Create the model & training system
-    model = LitConvNet()
-    
-    # Get dataloaders
-    trainset, testset = get_mnist(subset = 10)
-    trainloader = DataLoader(trainset, shuffle=True, batch_size=batch_size)
-    testloader = DataLoader(testset, shuffle=True, batch_size=batch_size)
+    model = LitConvNet(batch_size=batch_size, max_epochs=max_epochs)
     
     # Get a logger, to record metrics during training
     logger = CSVLogger(save_dir=os.getcwd() + "/logs", name="day4-convenet")
@@ -658,7 +680,7 @@ if MAIN:
         logger=logger,
         log_every_n_steps=1,
     )
-    trainer.fit(model=model, train_dataloaders=trainloader)
+    trainer.fit(model=model)
 
 ```
 
@@ -723,19 +745,9 @@ class ConvNetTrainingArgs():
     optimizer: t.optim.Optimizer = t.optim.Adam
     learning_rate: float = 1e-3
     log_dir: str = os.getcwd() + "/logs"
-    log_name: str = "day4-convenet"
+    log_name: str = "day3-convenet"
     log_every_n_steps: int = 1
     sample: int = 10
-
-    def __post_init__(self):
-        '''
-        This code runs after the class is instantiated. It can reference things like
-        self.sample, which are defined in the __init__ block.
-        '''
-        trainset, testset = get_mnist(subset=self.sample)
-        self.trainloader = DataLoader(trainset, shuffle=True, batch_size=self.batch_size)
-        self.testloader = DataLoader(testset, shuffle=False, batch_size=self.batch_size)
-        self.logger = CSVLogger(save_dir=self.log_dir, name=self.log_name)
 
 
 class LitConvNet(pl.LightningModule):
@@ -743,6 +755,7 @@ class LitConvNet(pl.LightningModule):
         super().__init__()
         self.convnet = ConvNet()
         self.args = args
+        self.trainset, self.testset = get_mnist(subset=args.sample)
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
         imgs, labels = batch
@@ -753,21 +766,44 @@ class LitConvNet(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = self.args.optimizer(self.parameters(), lr=self.args.learning_rate)
-        return optimizer
+        return self.args.optimizer(self.parameters(), lr=self.args.learning_rate)
+    
+    def train_dataloader(self):
+        return DataLoader(self.trainset, batch_size=self.args.batch_size, shuffle=True)
     
 
 
 if MAIN:
     args = ConvNetTrainingArgs()
     model = LitConvNet(args)
+    logger = CSVLogger(save_dir=args.log_dir, name=args.log_name)
     
     trainer = pl.Trainer(
         max_epochs=args.max_epochs,
-        logger=args.logger,
+        logger=logger,
         log_every_n_steps=1
     )
-    trainer.fit(model=model, train_dataloaders=args.trainloader)
+    trainer.fit(model=model)
+
+```
+
+```python
+
+if MAIN:
+    metrics = pd.read_csv(f"{trainer.logger.log_dir}/metrics.csv")
+    
+    metrics.head()
+    
+    line(
+        metrics["train_loss"].values,
+        x=metrics["step"].values,
+        yaxis_range=[0, metrics["train_loss"].max() + 0.1],
+        labels={"x": "Batches seen", "y": "Cross entropy loss"},
+        title="ConvNet training on MNIST",
+        width=800,
+        hovermode="x unified",
+        template="ggplot2", # alternative aesthetic for your plots (-:
+    )
 
 ```
 
@@ -791,6 +827,8 @@ Edit the `LitConvNet` class above to include a testing loop. Run a testing loop,
 
 The method is called `validation_step`. It takes the same arguments as `training_step`, and follows the same basic structure (run the model, get the test accuracy, and log it). We don't need to return the loss (because we don't need to do backpropagation on it), logging is the only important thing. Note that variables logged by `validation_step` are automatically averaged over the validation set. This means that if you log the accuracy for each batch, this will end up giving you a single row in your metrics dataframe, representing the the average accuracy over all batches in the validation set.
 
+You should also add a `val_dataloader` function (which works exactly the same as `train_dataloader`).
+
 <details>
 <summary>Terminology note - validation vs testing</summary>
 
@@ -807,6 +845,9 @@ Under the hood, when you train your model using `lightning.pytorch.Trainer` (see
 ```python
 model = LitModule()
 optimizer = model.configure_optimizers()
+
+train_dataloader = model.train_dataloader()
+val_dataloader = model.val_dataloader()
 
 for batch_idx, batch in enumerate(train_dataloader):
     loss = model.training_step(batch, batch_idx)
@@ -858,44 +899,41 @@ class LitConvNetTest(pl.LightningModule):
         super().__init__()
         self.convnet = ConvNet()
         self.args = args
+        self.trainset, self.testset = get_mnist(subset=args.sample)
 
-    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor, t.Tensor]:
-        '''Convenience function since train/validation steps are similar.'''
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        return self.convnet(x)
+
+    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor]:
         pass
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
-        '''
-        Here you compute and return the training loss and some additional metrics for e.g. 
-        the progress bar or logger.
-        '''
         pass
 
     def validation_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> None:
-        '''
-        Operates on a single batch of data from the validation set. In this step you might
-        generate examples or calculate anything of interest like accuracy.
-        '''
         pass
 
     def configure_optimizers(self):
-        '''
-        Choose what optimizers and learning-rate schedulers to use in your optimization.
-        '''
-        optimizer = self.args.optimizer(self.parameters(), lr=self.args.learning_rate)
-        return optimizer
+        return self.args.optimizer(self.parameters(), lr=self.args.learning_rate)
     
+    def train_dataloader(self):
+        return DataLoader(self.trainset, batch_size=self.args.batch_size, shuffle=True)
+    
+    def val_dataloader(self):
+        pass
 
 
 if MAIN:
     args = ConvNetTrainingArgs()
     model = LitConvNetTest(args)
+    logger = CSVLogger(save_dir=args.log_dir, name=args.log_name)
     
     trainer = pl.Trainer(
         max_epochs=args.max_epochs,
-        logger=args.logger,
+        logger=logger,
         log_every_n_steps=args.log_every_n_steps
     )
-    trainer.fit(model=model, train_dataloaders=args.trainloader, val_dataloaders=args.testloader)
+    trainer.fit(model=model)
 
 ```
 
@@ -910,6 +948,15 @@ if MAIN:
     plot_train_loss_and_test_accuracy_from_metrics(metrics, "Training ConvNet on MNIST data")
 
 ```
+
+Note - it might not look obvious how the test accuracy is increasing from this graph, because of the y-axis scale. If you want to plot the test accuracy at the very start, you can add a call `trainer.validate()` before `trainer.fit()` (this will call one validation loop before it starts the cycle of `max_epochs` training and validation loops).
+
+```python
+trainer = pl.Trainer(...)
+trainer.validate(model=model)
+trainer.fit(model=model)
+```
+
 
 <details>
 <summary>Help - I get <code>RuntimeError: expected scalar type Float but found Byte</code>.</summary>
@@ -927,19 +974,18 @@ class LitConvNetTest(pl.LightningModule):
         super().__init__()
         self.convnet = ConvNet()
         self.args = args
+        self.trainset, self.testset = get_mnist(subset=args.sample)
 
-    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor, t.Tensor]:
-        '''Convenience function since train/validation steps are similar.'''
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        return self.convnet(x)
+
+    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor]:
         # SOLUTION
         imgs, labels = batch
-        logits = self.convnet(imgs)
+        logits = self(imgs)
         return logits, labels
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
-        '''
-        Here you compute and return the training loss and some additional metrics for e.g. 
-        the progress bar or logger.
-        '''
         # SOLUTION
         logits, labels = self._shared_train_val_step(batch)
         loss = F.cross_entropy(logits, labels)
@@ -947,10 +993,6 @@ class LitConvNetTest(pl.LightningModule):
         return loss
     
     def validation_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> None:
-        '''
-        Operates on a single batch of data from the validation set. In this step you might
-        generate examples or calculate anything of interest like accuracy.
-        '''
         # SOLUTION
         logits, labels = self._shared_train_val_step(batch)
         classifications = logits.argmax(dim=1)
@@ -958,11 +1000,14 @@ class LitConvNetTest(pl.LightningModule):
         self.log("accuracy", accuracy)
 
     def configure_optimizers(self):
-        '''
-        Choose what optimizers and learning-rate schedulers to use in your optimization.
-        '''
-        optimizer = self.args.optimizer(self.parameters(), lr=self.args.learning_rate)
-        return optimizer
+        return self.args.optimizer(self.parameters(), lr=self.args.learning_rate)
+    
+    def train_dataloader(self):
+        return DataLoader(self.trainset, batch_size=self.args.batch_size, shuffle=True)
+    
+    def val_dataloader(self):
+        # SOLUTION
+        return DataLoader(self.testset, batch_size=self.args.batch_size, shuffle=True)
 ```
 </details>
 
@@ -985,6 +1030,8 @@ For instance, when you get to writing training loops for our transformer models 
 
 
 ## Bonus - Using Transforms for Data Augmentation
+
+*You should come back to these exercises at the end of today, if you have time.*
 
 Data augmentation is a technique used to increase the amount of training data by applying various transformations to the original dataset. This can help improve the performance of the model, especially when you have limited training data. Data augmentation can also improve the robustness of the model by exposing it to different variations of the input data, making the model generalize better to unseen data.
 
@@ -1019,18 +1066,16 @@ Now we can update the `get_mnist` function to incorporate data augmentation for 
 
 ```python
 def get_mnist_augmented(subset: int = 1, train_transform=None, test_transform=None):
-
-if MAIN:
-       if train_transform is None:
-           train_transform = MNIST_TRANSFORM
-       if test_transform is None:
-           test_transform = MNIST_TRANSFORM
-       mnist_trainset = datasets.MNIST(root="./data", train=True, download=True, transform=train_transform)
-       mnist_testset = datasets.MNIST(root="./data", train=False, download=True, transform=test_transform)
-       if subset > 1:
-           mnist_trainset = Subset(mnist_trainset, indices=range(0, len(mnist_trainset), subset))
-           mnist_testset = Subset(mnist_testset, indices=range(0, len(mnist_testset), subset))
-       return mnist_trainset, mnist_testset
+    if train_transform is None:
+        train_transform = MNIST_TRANSFORM
+    if test_transform is None:
+        test_transform = MNIST_TRANSFORM
+    mnist_trainset = datasets.MNIST(root="./data", train=True, download=True, transform=train_transform)
+    mnist_testset = datasets.MNIST(root="./data", train=False, download=True, transform=test_transform)
+    if subset > 1:
+        mnist_trainset = Subset(mnist_trainset, indices=range(0, len(mnist_trainset), subset))
+        mnist_testset = Subset(mnist_testset, indices=range(0, len(mnist_testset), subset))
+    return mnist_trainset, mnist_testset
 
 ```
 
@@ -1184,11 +1229,11 @@ class Sequential(nn.Module):
             self._modules[str(index)] = mod
 
     def __getitem__(self, index: int) -> nn.Module:
-        if index < 0: index += len(self._modules) # deal with negative indices
+        index %= len(self._modules) # deal with negative indices
         return self._modules[str(index)]
 
     def __setitem__(self, index: int, module: nn.Module) -> None:
-        if index < 0: index += len(self._modules) # deal with negative indices
+        index %= len(self._modules) # deal with negative indices
         self._modules[str(index)] = module
 
     def forward(self, x: t.Tensor) -> t.Tensor:
@@ -1283,51 +1328,10 @@ if MAIN:
 
 ```
 
-## AveragePool
-
-Let's end our collection of `nn.Module`s with an easy one 🙂
-
-The ResNet has a Linear layer with 1000 outputs at the end in order to produce classification logits for each of the 1000 classes. Any Linear needs to have a constant number of input features, but the ResNet is supposed to be compatible with arbitrary height and width, so we can't just do a pooling operation with a fixed kernel size and stride.
-
-Luckily, the simplest possible solution works decently: take the mean over the spatial dimensions. Intuitively, each position has an equal "vote" for what objects it can "see".
-
-
-### Exercise - implement `AveragePool`
-
-```c
-Difficulty: 🟠⚪⚪⚪⚪
-Importance: 🟠🟠⚪⚪⚪
-
-You should spend up to 5-10 minutes on this exercise.
-```
-
-This should be a pretty straightforward implementation; it doesn't have any weights or parameters of any kind, so you only need to implement the `forward` method.
-
-
-```python
-class AveragePool(nn.Module):
-    def forward(self, x: t.Tensor) -> t.Tensor:
-        '''
-        x: shape (batch, channels, height, width)
-        Return: shape (batch, channels)
-        '''
-        pass
-
-
-```
-
 <details>
 <summary>Solution</summary>
 
-```python
-class AveragePool(nn.Module):
-    def forward(self, x: t.Tensor) -> t.Tensor:
-        '''
-        x: shape (batch, channels, height, width)
-        Return: shape (batch, channels)
-        '''
-        return t.mean(x, dim=(2, 3))
-```
+
 ```python
 class BatchNorm2d(nn.Module):
     # The type hints below aren't functional, they're just for documentation
@@ -1365,7 +1369,6 @@ class BatchNorm2d(nn.Module):
         Return: shape (batch, channels, height, width)
         '''
         # SOLUTION
-        
         # Calculating mean and var over all dims except for the channel dim
         if self.training:
             # Using keepdim=True so we don't have to worry about broadasting them with x at the end
@@ -1388,7 +1391,48 @@ class BatchNorm2d(nn.Module):
     def extra_repr(self) -> str:
         # SOLUTION
         return ", ".join([f"{key}={getattr(self, key)}" for key in ["num_features", "eps", "momentum"]])
+```
+</details>
 
+
+## AveragePool
+
+Let's end our collection of `nn.Module`s with an easy one 🙂
+
+The ResNet has a Linear layer with 1000 outputs at the end in order to produce classification logits for each of the 1000 classes. Any Linear needs to have a constant number of input features, but the ResNet is supposed to be compatible with arbitrary height and width, so we can't just do a pooling operation with a fixed kernel size and stride.
+
+Luckily, the simplest possible solution works decently: take the mean over the spatial dimensions. Intuitively, each position has an equal "vote" for what objects it can "see".
+
+
+### Exercise - implement `AveragePool`
+
+```c
+Difficulty: 🟠⚪⚪⚪⚪
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to 5-10 minutes on this exercise.
+```
+
+This should be a pretty straightforward implementation; it doesn't have any weights or parameters of any kind, so you only need to implement the `forward` method.
+
+
+```python
+class AveragePool(nn.Module):
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        '''
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, channels)
+        '''
+        pass
+
+
+```
+
+<details>
+<summary>Solution</summary>
+
+
+```python
 class AveragePool(nn.Module):
     def forward(self, x: t.Tensor) -> t.Tensor:
         '''
@@ -1426,7 +1470,7 @@ The right-most block in the diagram, `ResidualBlock`, is nested inside `BlockGro
 Similarly, `BlockGroup` is nested multiple times (four to be precise) in the full `ResNet34` architecture.
 </details>
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/resnet_diagram.svg" width="900">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/resnet_diagram_fixed3.svg" width="900">
 
 
 
@@ -2134,7 +2178,6 @@ def get_resnet_for_feature_extraction(n_classes: int) -> ResNet34:
     Returns the ResNet model.
     '''
     # SOLUTION
-
     # Create a ResNet34 with the default number of classes
     my_resnet = ResNet34()
 
@@ -2181,16 +2224,10 @@ class ResNetTrainingArgs():
     optimizer: t.optim.Optimizer = t.optim.Adam
     learning_rate: float = 1e-3
     log_dir: str = os.getcwd() + "/logs"
-    log_name: str = "day4-resnet"
+    log_name: str = "day3-resnet"
     log_every_n_steps: int = 1
     n_classes: int = 10
     subset: int = 10
-
-    def __post_init__(self):
-        trainset, testset = get_cifar(self.subset)
-        self.trainloader = DataLoader(trainset, shuffle=True, batch_size=self.batch_size)
-        self.testloader = DataLoader(testset, shuffle=False, batch_size=self.batch_size)
-        self.logger = CSVLogger(save_dir=self.log_dir, name=self.log_name)
 
 ```
 
@@ -2231,49 +2268,106 @@ class LitResNet(pl.LightningModule):
         super().__init__()
         pass
 
-    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor, t.Tensor]:
-        '''
-        Convenience function since train/validation steps are similar.
-        '''
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        pass
+
+    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor]:
         pass
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
-        '''
-        Here you compute and return the training loss and some additional metrics for e.g. 
-        the progress bar or logger.
-        '''
         pass
 
     def validation_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> None:
-        '''
-        Operates on a single batch of data from the validation set. In this step you might
-        generate examples or calculate anything of interest like accuracy.
-        '''
         pass
 
     def configure_optimizers(self):
-        '''
-        Choose what optimizers and learning-rate schedulers to use in your optimization.
-        '''
+        pass
+
+    def train_dataloader(self):
+        pass
+
+    def val_dataloader(self):
         pass
 
 
 if MAIN:
     args = ResNetTrainingArgs()
     model = LitResNet(args)
+    logger = CSVLogger(save_dir=args.log_dir, name=args.log_name)
     
     trainer = pl.Trainer(
         max_epochs=args.max_epochs,
-        logger=args.logger,
+        logger=logger,
         log_every_n_steps=args.log_every_n_steps
     )
-    trainer.fit(model=model, train_dataloaders=args.trainloader, val_dataloaders=args.testloader)
+    trainer.fit(model=model)
     
     metrics = pd.read_csv(f"{trainer.logger.log_dir}/metrics.csv")
     
     plot_train_loss_and_test_accuracy_from_metrics(metrics, "Feature extraction with ResNet34")
 
 ```
+
+<details>
+<summary>Solution</summary>
+
+
+```python
+class LitResNet(pl.LightningModule):
+    def __init__(self, args: ResNetTrainingArgs):
+        super().__init__()
+        # SOLUTION
+        self.args = args
+        self.resnet = get_resnet_for_feature_extraction(self.args.n_classes)
+        self.trainset, self.testset = get_cifar(subset=self.args.subset)
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        # SOLUTION
+        return self.resnet(x)
+
+    def _shared_train_val_step(self, batch: Tuple[t.Tensor, t.Tensor]) -> Tuple[t.Tensor, t.Tensor]:
+        # SOLUTION
+        imgs, labels = batch
+        logits = self(imgs)
+        return logits, labels
+
+    def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
+        # SOLUTION
+        logits, labels = self._shared_train_val_step(batch)
+        loss = F.cross_entropy(logits, labels)
+        self.log("train_loss", loss)
+        return loss
+    
+    def validation_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> None:
+        # SOLUTION
+        logits, labels = self._shared_train_val_step(batch)
+        classifications = logits.argmax(dim=1)
+        accuracy = t.sum(classifications == labels) / len(classifications)
+        self.log("accuracy", accuracy)
+
+    def configure_optimizers(self):
+        # SOLUTION
+        return self.args.optimizer(self.resnet.out_layers.parameters(), lr=self.args.learning_rate)
+    
+    def train_dataloader(self):
+        # SOLUTION
+        return DataLoader(self.trainset, batch_size=self.args.batch_size, shuffle=True)
+    
+    def val_dataloader(self):
+        # SOLUTION
+        return DataLoader(self.testset, batch_size=self.args.batch_size, shuffle=True)
+```
+</details>
+
+
+<details>
+<summary>Question - can you guess what would happen if you passed only the last layer of params into your optimizer, but you <i>didn't</i> freeze gradients of previous layers?</summary>
+
+Only the last layer of parameters will be *updated*, but gradients will be propogated back through all the parameters (meaning backward passes will take a very long time).
+
+You'll understand this more once we do the exercises from day 5 (backpropagation).
+</details>
+
 
 Congratulations for finishing the exercises! 
 

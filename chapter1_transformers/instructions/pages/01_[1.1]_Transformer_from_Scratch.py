@@ -22,14 +22,8 @@ def section_0():
 
 <ul class="contents">
     <li class='margtop'><a class='contents-el' href='#introduction'>Introduction</a></li>
-    <li class='margtop'><a class='contents-el' href='#content-&-learning-objectives'>Content & Learning Objectives</a></li>
-    <li><ul class="contents">
-        <li><a class='contents-el' href='#110125-understanding-inputs-&-outputs-of-a-transformer'>1️⃣ Understanding Inputs & Outputs of a Transformer</a></li>
-        <li><a class='contents-el' href='#1010125-clean-transformer-implementation'>2️⃣ Clean Transformer Implementation</a></li>
-        <li><a class='contents-el' href='#12510125-training-a-transformer'>3️⃣ Training a Transformer</a></li>
-        <li><a class='contents-el' href='#1010125-sampling-from-a-transformer'>4️⃣ Sampling from a Transformer</a></li>
-    </ul></li>
-    <li class='margtop'><a class='contents-el' href='#setup-don't-read,-just-run'>Setup (don't read, just run)</a></li>
+    <li class='margtop'><a class='contents-el' href='#content-learning-objectives'>Content & Learning Objectives</a></li>
+    <li class='margtop'><a class='contents-el' href='#setup-don't-read-just-run'>Setup (don't read, just run)</a></li>
 </ul></li>""", unsafe_allow_html=True)
 
     st.markdown(r"""
@@ -37,7 +31,11 @@ def section_0():
 <img src="https://raw.githubusercontent.com/callummcdougall/TransformerLens-intro/main/images/page_images/transformer-building.png" width="350">
 
 
-If you have any feedback on this course (e.g. bugs, confusing explanations, parts that you feel could be structured better), please let me know using [this Google Form](https://forms.gle/2ZhdHa87wWsrATjh9).
+Colab: [**exercises**](https://colab.research.google.com/drive/1Zl3zSdli_epSfaoQ_HeBCuE6dkGWTowd) | [**solutions**](https://colab.research.google.com/drive/1neFAal6woQ7p-u0LpU7ZqvHeEaJ6j2DG)
+
+Please send any problems / bugs on the `#errata` channel in the [Slack group](https://join.slack.com/t/arena-la82367/shared_invite/zt-1uvoagohe-JUv9xB7Vr143pdx1UBPrzQ), and ask any questions on the dedicated channels for this chapter of material.
+
+You can toggle dark mode from the buttons on the top-right of this page.
 
 
 # [1.1] - Transformers from scratch
@@ -55,7 +53,7 @@ The exercises are written to accompany Neel Nanda's [TransformerLens library](ht
 ## Content & Learning Objectives
 
 
-### 1️⃣ Understanding Inputs & Outputs of a Transformer
+#### 1️⃣ Understanding Inputs & Outputs of a Transformer
 
 In this section, we'll take a first look at transformers - what their function is, how information moves inside a transformer, and what inputs & outputs they take.
 
@@ -66,7 +64,7 @@ In this section, we'll take a first look at transformers - what their function i
 > - Learn what tokenization is, and how models do it
 > - Understand what logits are, and how to use them to derive a probability distribution over the vocabulary
 
-### 2️⃣ Clean Transformer Implementation
+#### 2️⃣ Clean Transformer Implementation
 
 Here, we'll implement a transformer from scratch, using only PyTorch's tensor operations. This will give us a good understanding of how transformers work, and how to use them. We do this by going module-by-module, in an experience which should feel somewhat similar to last week's ResNet exercises. Much like with ResNets, you'll conclude by loading in pretrained weights and verifying that your model works as expected.
 
@@ -84,7 +82,7 @@ Here, we'll implement a transformer from scratch, using only PyTorch's tensor op
 >     * Embedding (a lookup table from tokens to residual stream vectors)
 >     * Unembedding (a matrix for converting residual stream vectors into a distribution over tokens)
 
-### 3️⃣ Training a Transformer
+#### 3️⃣ Training a Transformer
 
 Next, you'll learn how to train your transformer from scratch. This will be quite similar to the training loops you wrote for ResNet in your first week.
 
@@ -94,7 +92,7 @@ Next, you'll learn how to train your transformer from scratch. This will be quit
 > * Write a basic transformer training loop with PyTorch Lightning
 > * Interpret the transformer's falling cross entropy loss with reference to features of the training data (e.g. bigram frequencies)
 
-### 4️⃣ Sampling from a Transformer
+#### 4️⃣ Sampling from a Transformer
 
 Lastly, you'll learn how to sample from a transformer. This will involve implementing a few different sampling methods, and writing a caching system which can reuse computations from previous forward passes to improve your model's text generation speed.
 
@@ -110,7 +108,8 @@ Lastly, you'll learn how to sample from a transformer. This will involve impleme
 
 
 ```python
-import os; os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+import os; os.environ['ACCELERATE_DISABLE_RICH'] = "1"; os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+import sys
 import einops
 from dataclasses import dataclass
 from transformer_lens import HookedTransformer
@@ -138,22 +137,16 @@ import webbrowser
 # Make sure exercises are in the path
 chapter = r"chapter1_transformers"
 exercises_dir = Path(f"{os.getcwd().split(chapter)[0]}/{chapter}/exercises").resolve()
-section_dir = exercises_dir / "part1_transformer_from_scratch"
+section_dir = (exercises_dir / "part1_transformer_from_scratch").resolve()
 if str(exercises_dir) not in sys.path: sys.path.append(str(exercises_dir))
 
 from plotly_utils import imshow
 # import part1_transformer_from_scratch.solutions as solutions
 
-# Add this to your workspace settings, so typechecker sees these modules:
-# "python.analysis.extraPaths": ["${workspaceFolder}/chapter1_transformers/exercises"]
-
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 MAIN = __name__ == '__main__'
 
-```
-
-```python
 
 if MAIN:
     reference_gpt2 = HookedTransformer.from_pretrained("gpt2-small", fold_ln=False, center_unembed=False, center_writing_weights=False)
@@ -172,9 +165,9 @@ def section_1():
 ## Table of Contents
 
 <ul class="contents">
-    <li class='margtop'><a class='contents-el' href='#what-is-the-point-of-a-transformer?'>What is the point of a transformer?</a></li>
+    <li class='margtop'><a class='contents-el' href='#what-is-the-point-of-a-transformer'>What is the point of a transformer?</a></li>
     <li><ul class="contents">
-        <li><a class='contents-el' href='#how-is-the-model-trained?'>How is the model trained?</a></li>
+        <li><a class='contents-el' href='#how-is-the-model-trained'>How is the model trained?</a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#tokens-transformer-inputs'>Tokens - Transformer Inputs</a></li>
     <li><ul class="contents">
@@ -184,7 +177,7 @@ def section_1():
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#text-generation'>Text generation</a></li>
     <li><ul class="contents">
-        <li><a class='contents-el' href='#**step-13:**-add-this-to-the-end-of-the-input,-re-run'>**Step 5:** Add this to the end of the input, re-run</a></li>
+        <li><a class='contents-el' href='#**step-13:**-add-this-to-the-end-of-the-input-re-run'>**Step 5:** Add this to the end of the input, re-run</a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#key-takeaways'>Key takeaways</a></li>
 </ul></li>""", unsafe_allow_html=True)
@@ -230,7 +223,7 @@ The model's output is the vector $x$ (one for each prediction it makes). We call
 How do we stop the transformer by "cheating" by just looking at the tokens it's trying to predict? Answer - we make the transformer have *causal attention* (as opposed to *bidirectional attention*). Causal attention only allows information to move forwards in the sequence, never backwards. The prediction of what comes after token 50 is only a function of the first 50 tokens, *not* of token 51. We say the transformer is **autoregressive**, because it only predicts future words based on past data.
 
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-overview-new.png" width="1150">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-overview-new.png" width="900">
 
 
 ## Tokens - Transformer Inputs
@@ -244,7 +237,6 @@ We can factor this into 2 questions:
 2. How do we convert these sub-units into vectors?
 
 Let's start with the second of these questions.
-
 
 
 ### Converting sub-units to vectors
@@ -264,7 +256,7 @@ W_E &= \begin{bmatrix}
 \leftarrow v_0 \rightarrow \\
 \leftarrow v_1 \rightarrow \\
 \vdots \\
-\leftarrow v_{N-1} \rightarrow \\
+\leftarrow v_{d_{vocab}-1} \rightarrow \\
 \end{bmatrix} \quad \text{is the embedding matrix (size }d_{vocab} \times d_{embed}\text{),} \\
 \\
 t_i &= (0, \dots, 0, 1, 0, \dots, 0) \quad \text{is the one-hot encoding for the }i\text{th word (length }d_{vocab}\text{)} \\
@@ -300,14 +292,16 @@ We begin with the 256 ASCII characters as our tokens, and then find the most com
 
 <details>
 <summary>Fun (totally optional) exercise - can you guess what the first-formed 3/4/5/6/7-letter encodings in GPT-2's vocabulary are?</summary>
-They are:
+Run this code to find out:
 
-```
-3 -> "ing"
-4 -> " and"
-5 -> " that"
-6 -> " their"
-7 -> " people"
+```python
+lengths = dict.fromkeys(range(3, 8), "")
+for tok, idx in sorted_vocab:
+    if not lengths.get(len(tok), True):
+        lengths[len(tok)] = tok
+
+for length, tok in lengths.items():
+    print(f"{length}: {tok}")
 ```
 </details>
 
@@ -527,14 +521,14 @@ def section_2():
 <ul class="contents">
     <li class='margtop'><a class='contents-el' href='#high-level-architecture'>High-Level architecture</a></li>
     <li><ul class="contents">
-        <li><a class='contents-el' href='#tokenization-&-embedding'>Tokenization & Embedding</a></li>
+        <li><a class='contents-el' href='#tokenization-embedding'>Tokenization & Embedding</a></li>
         <li><a class='contents-el' href='#residual-stream'>Residual stream</a></li>
         <li><a class='contents-el' href='#transformer-blocks'>Transformer blocks</a></li>
         <li><a class='contents-el' href='#mlp'>MLP</a></li>
         <li><a class='contents-el' href='#unembedding'>Unembedding</a></li>
         <li><a class='contents-el' href='#bonus-things-less-conceptually-important-but-key-technical-details'>Bonus things - less conceptually important but key technical details</a></li>
     </ul></li>
-    <li class='margtop'><a class='contents-el' href='#actual-code!'>Actual Code!</a></li>
+    <li class='margtop'><a class='contents-el' href='#actual-code'>Actual Code!</a></li>
     <li><ul class="contents">
         <li><a class='contents-el' href='#parameters-and-activations'>Parameters and Activations</a></li>
         <li><a class='contents-el' href='#config'>Config</a></li>
@@ -568,7 +562,7 @@ def section_2():
 >     * Unembedding (a matrix for converting residual stream vectors into a distribution over tokens)
 
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-new.png" width="1050">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-new.png" width="850">
 
 
 ## High-Level architecture
@@ -644,7 +638,7 @@ Attention layers are effectively our way of saying to the transformer, "don't im
 Below is a schematic diagram of the attention layers. Don't worry if you don't follow this right now, we'll go into more detail during implementation.
 
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-attn-new.png" width="1250">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-attn-new.png" width="1100">
 
 
 ### MLP
@@ -670,6 +664,31 @@ We can view the vectors $W^{in}_{[:, i]}$ as the **input directions**, and $W^{o
 
 Terminology note - sometimes we refer to each of these $d_{mlp}$ input-output pairs as **neurons**.
 
+---
+
+If you're having trouble visualizing the linear algebra going into this, we've broken it down step by step below. We have:
+
+$$
+\begin{aligned}
+x^T W^{in} &= x^T [W^{in}_{[:, 1]}\,, ...\;, W^{in}_{[:, n]}] \\
+&= (x^T W^{in}_{[:, 1]}\,, \; ...\;, \; x^T W^{in}_{[:, n]})
+\end{aligned}
+$$
+
+where $W^{in}_{[:, i]}$ are the columns of $W^{in}$. In other words, these values (the pre-GELU activations) are projections of $x$ along the input directions of the neurons.
+
+If we add our activation function and the second matrix, then we get:
+
+$$
+\begin{aligned}
+f(x^T W^{in})W^{out} &= (f(x^T W^{in}_{[:, 1]})\,, \; ...\;,\; f(x^T W^{in}_{[:, n]})) \begin{bmatrix} \leftarrow W^{out}_{[1, :]} \rightarrow \\ \vdots \\ \leftarrow W^{out}_{[n, :]} \rightarrow \end{bmatrix} \\
+&= f(x^T W^{in}_{[:, 1]}) W^{out}_{[1, :]} + \;...\; + f(x^T W^{in}_{[:, n]}) W^{out}_{[n, :]} \\
+&= \sum_{i=1}^n f(x^T W^{in}_{[:, i]}) W^{out}_{[i, :]}
+\end{aligned}
+$$
+
+where $W^{out}_{[i, :]}$ are the rows of $W^{out}$. In other words, our output is a linear combination of the rows of $W^{out}$, with the coefficients of that linear combination given by the projections of $x$ along the columns of $W^{in}$.
+
 </details>
 
 <details>
@@ -683,7 +702,7 @@ Another related intuition (for which there is some evidence) is **MLPs as memory
 </details>
 
 
-<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-mlp-new-2.png" width="850">
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/transformer-mlp-new-2.png" width="650">
 
 
 ### Unembedding
@@ -873,6 +892,13 @@ def load_gpt2_test(cls, gpt2_layer, input):
 
 ## LayerNorm
 
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 10-15 minutes on this exercise.
+```
+
 You should fill in the code below, and then run the tests to verify that your layer is working correctly.
 
 Your LayerNorm should do the following:
@@ -936,6 +962,13 @@ class LayerNorm(nn.Module):
 
 ## Embedding
 
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 5-10 minutes on this exercise.
+```
+
 This is basically a lookup table from tokens to residual stream vectors.
 
 (Hint - you can implement this in just one line, without any complicated functions.)
@@ -990,6 +1023,13 @@ class Embed(nn.Module):
 
 ## Positional Embedding
 
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 10-15 minutes on this exercise.
+```
+
 Positional embedding can also be thought of as a lookup table, but rather than the indices being our token IDs, the indices are just the numbers `0`, `1`, `2`, ..., `seq_len-1` (i.e. the position indices of the tokens in the sequence).
 
 
@@ -1002,7 +1042,6 @@ class PosEmbed(nn.Module):
         nn.init.normal_(self.W_pos, std=self.cfg.init_range)
 
     def forward(self, tokens: Int[Tensor, "batch position"]) -> Float[Tensor, "batch position d_model"]:
-        
         pass
 
 
@@ -1025,7 +1064,6 @@ class PosEmbed(nn.Module):
         nn.init.normal_(self.W_pos, std=self.cfg.init_range)
 
     def forward(self, tokens: Int[Tensor, "batch position"]) -> Float[Tensor, "batch position d_model"]:
-        
         # SOLUTION
         batch, seq_len = tokens.shape
         return einops.repeat(self.W_pos[:seq_len], "seq d_model -> batch seq d_model", batch=batch)
@@ -1034,6 +1072,13 @@ class PosEmbed(nn.Module):
 
 
 ## Attention
+
+```c
+Difficulty: 🟠🟠🟠🟠⚪
+Importance: 🟠🟠🟠🟠🟠
+
+You should spend up to 25-35 minutes on this exercise.
+```
 
 * **Step 1:** Produce an attention pattern - for each destination token, probability distribution over previous tokens (including current token)
     * Linear map from input -> query, key shape `[batch, seq_posn, head_index, d_head]`
@@ -1117,7 +1162,7 @@ if MAIN:
 ```
 
 """, unsafe_allow_html=True)
-    with open("chapter1_transformers/instructions/media/attn_patterns_demo.html", "rb") as file:
+    with open("media/attn_patterns_demo.html", "rb") as file:
         attn_patterns_demo = file.read()
     st.components.v1.html(attn_patterns_demo, height=550)
     st.markdown(r"""
@@ -1271,7 +1316,6 @@ class Attention(nn.Module):
         self, normalized_resid_pre: Float[Tensor, "batch posn d_model"]
     ) -> Float[Tensor, "batch posn d_model"]:
         # SOLUTION
-
         # Calculate query, key and value vectors
         q = einops.einsum(
             normalized_resid_pre, self.W_Q,
@@ -1326,6 +1370,13 @@ class Attention(nn.Module):
 
 
 ## MLP
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠🟠⚪
+
+You should spend up to 10-15 minutes on this exercise.
+```
 
 Next, you should implement the MLP layer, which consists of:
 
@@ -1394,6 +1445,13 @@ class MLP(nn.Module):
 
 ## Transformer Block
 
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to ~10 minutes on this exercise.
+```
+
 Now, we can put together the attention, MLP and layernorms into a single transformer block. Remember to implement the residual connections correctly!
 
 
@@ -1446,6 +1504,13 @@ class TransformerBlock(nn.Module):
 
 ## Unembedding
 
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to ~10 minutes on this exercise.
+```
+
 The unembedding is jus a linear layer (with weight `W_U` and bias `b_U`).
 
 
@@ -1497,6 +1562,13 @@ class Unembed(nn.Module):
 
 
 ## Full Transformer
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to ~10 minutes on this exercise.
+```
 
 
 ```python
@@ -1553,7 +1625,9 @@ class DemoTransformer(nn.Module):
 
 if MAIN:
     demo_gpt2 = DemoTransformer(Config(debug=False)).to(device)
-    demo_gpt2.load_state_dict(reference_gpt2.state_dict(), strict=False);
+    demo_gpt2.load_state_dict(reference_gpt2.state_dict(), strict=False)
+    
+    demo_logits = demo_gpt2(tokens)
 
 ```
 
@@ -1575,13 +1649,6 @@ in other words, the negative log prob of the true classification.
 
 
 ```python
-
-if MAIN:
-    demo_logits = demo_gpt2(tokens)
-
-```
-
-```python
 def get_log_probs(
     logits: Float[Tensor, "batch posn d_vocab"], 
     tokens: Int[Tensor, "batch posn"]
@@ -1592,6 +1659,7 @@ def get_log_probs(
     log_probs_for_predicted_tokens = log_probs[:, :-1].gather(dim=-1, index=tokens[:, 1:].unsqueeze(-1)).squeeze(-1)
 
     return log_probs_for_predicted_tokens
+
 
 
 if MAIN:
@@ -1608,7 +1676,7 @@ We can also greedily generate text, by taking the most likely next token and con
 ```python
 
 if MAIN:
-    test_string = '''There is a theory which states that if ever anyone discovers exactly what the Universe is for and why it is here, it will instantly disappear and be replaced by something even more bizarre and inexplicable. There is another theory which states that'''
+    test_string = '''The Total Perspective Vortex derives its picture of the whole Universe on the principle of'''
     for i in tqdm(range(100)):
         test_tokens = reference_gpt2.to_tokens(test_string).to(device)
         demo_logits = demo_gpt2(test_tokens)
@@ -1708,10 +1776,8 @@ class TransformerTrainingArgs():
     weight_decay = 1e-2
     log_dir: str = os.getcwd() + "/logs"
     log_name: str = "day1-transformer"
+    run_name: Optional[str] = None
     log_every_n_steps: int = 1
-
-    def __post_init__(self):
-        self.logger = WandbLogger(save_dir=self.log_dir, project=self.log_name)
 
 
 if MAIN:
@@ -1761,7 +1827,7 @@ if MAIN:
 
 ## Run Training Loop
 
-If you did the day 4 or 5 material during the fundamentals week, this exercise should be familiar to you. If not, a little refresher:
+If you did the material on [PyTorch Lightning](https://arena-ch0-fundamentals.streamlit.app/[0.3]_ResNets#pytorch-lightning) during the first week, this should all be familiar to you. If not, a little refresher:
 
 <details>
 <summary>Click here for a basic refresher on PyTorch Lightning & Weights and Biases</summary>
@@ -1788,10 +1854,12 @@ Weights and Biases is a useful service which visualises training runs and perfor
 * Remember to call `wandb.finish()` at the end of your training instance.
 </details>
 
-You should fill in the `training_step` and `configure_optimizers` methods below. Some guidance:
+You should fill in the methods below. Some guidance:
 
 * Remember we were able to calculate cross entropy loss using the `get_log_probs` function in the previous section.
 * You should use the optimizer `t.optim.AdamW` (Adam with weight decay), and with hyperparameters `lr` and `weight_decay` taken from your `TransformerTrainingArgs` dataclass instance.
+
+If you've not encountered `train_dataloader` before, this function returns a dataloader (or else something which you iterate through to get the batches used in the `training_step` function). Also, the `forward` function of the model overrides the default behaviour when you call `self(input)` within another method. Neither of these are strictly necessary, but they're useful Lightning features for keeping your code clean.
 
 
 ```python
@@ -1802,6 +1870,10 @@ class LitTransformer(pl.LightningModule):
         self.cfg = model.cfg
         self.args = args
         self.data_loader = data_loader
+
+    def forward(self, tokens: Int[Tensor, "batch position"]) -> Float[Tensor, "batch position d_vocab"]:
+        logits = self.model(tokens)
+        return logits
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
         '''
@@ -1816,6 +1888,8 @@ class LitTransformer(pl.LightningModule):
         '''
         pass
 
+    def train_dataloader(self):
+        return self.data_loader
 
 ```
 
@@ -1831,6 +1905,10 @@ class LitTransformer(pl.LightningModule):
         self.cfg = model.cfg
         self.args = args
         self.data_loader = data_loader
+
+    def forward(self, tokens: Int[Tensor, "batch position"]) -> Float[Tensor, "batch position d_vocab"]:
+        logits = self.model(tokens)
+        return logits
 
     def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
         '''
@@ -1851,6 +1929,9 @@ class LitTransformer(pl.LightningModule):
         # SOLUTION
         optimizer = t.optim.AdamW(self.model.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         return optimizer
+    
+    def train_dataloader(self):
+        return self.data_loader
 ```
 </details>
 
@@ -1859,10 +1940,11 @@ class LitTransformer(pl.LightningModule):
 
 if MAIN:
     litmodel = LitTransformer(args, model, data_loader)
+    logger = WandbLogger(save_dir=args.log_dir, project=args.log_name, name=args.run_name)
     
     trainer = pl.Trainer(
         max_epochs=args.max_epochs,
-        logger=args.logger,
+        logger=logger,
         log_every_n_steps=args.log_every_n_steps
     )
     trainer.fit(model=litmodel, train_dataloaders=litmodel.data_loader)
@@ -1943,25 +2025,34 @@ def section_4():
 
 <ul class="contents">
     <li class='margtop'><a class='contents-el' href='#main-sampling-function'>Main Sampling Function</a></li>
+    <li><ul class="contents">
+        <li><a class='contents-el' href='#exercise-implement-sample'><b>Exercise</b> - implement <code>sample</code></a></li>
+    </ul></li>
     <li class='margtop'><a class='contents-el' href='#sampling-with-categorical'>Sampling with Categorical</a></li>
     <li><ul class="contents">
         <li><a class='contents-el' href='#exercise-basic-sampling'><b>Exercise</b> - Basic Sampling</a></li>
-        <li><a class='contents-el' href='#temperature'>Temperature</a></li>
+        <li><a class='contents-el' href='#exercise-temperature'><b>Exercise</b> - Temperature</a></li>
         <li><a class='contents-el' href='#exercise-frequency-penalty'><b>Exercise</b> - Frequency Penalty</a></li>
         <li><a class='contents-el' href='#sampling-manual-testing'>Sampling - Manual Testing</a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#top-k-sampling'>Top-K Sampling</a></li>
     <li><ul class="contents">
+        <li><a class='contents-el' href='#exercise-implement-sample-top-k'><b>Exercise</b> - implement <code>sample_top_k</code></a></li>
         <li><a class='contents-el' href='#top-k-sampling-example'>Top-K Sampling - Example</a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#top-p-aka-nucleus-sampling'>Top-p aka Nucleus Sampling</a></li>
     <li><ul class="contents">
+        <li><a class='contents-el' href='#exercise-implement-sample-top-p'><b>Exercise</b> - implement <code>sample_top_p</code></a></li>
         <li><a class='contents-el' href='#top-p-sampling-example'>Top-p Sampling - Example</a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#beam-search'>Beam search</a></li>
+    <li><ul class="contents">
+        <li><a class='contents-el' href='#exercise-implement-beam-search'><b>Exercise</b> - implement <code>beam_search</code></a></li>
+    </ul></li>
     <li class='margtop'><a class='contents-el' href='#caching'>Caching</a></li>
     <li><ul class="contents">
-        <li><a class='contents-el' href='#how-can-caching-help-us?'>How can caching help us?</a></li>
+        <li><a class='contents-el' href='#how-can-caching-help-us'>How can caching help us?</a></li>
+        <li><a class='contents-el' href='#exercise-implement-caching'><b>Exercise</b> - implement caching</a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#bonus-cached-beam-search'>Bonus - cached beam search</a></li>
 </ul></li>""", unsafe_allow_html=True)
@@ -2037,7 +2128,7 @@ class TransformerSampler:
         kwargs are passed to sample_next_token, to give detailed instructions on how 
         new tokens are chosen.
         '''
-        raise NotImplementedError()
+        pass
     
 
     @staticmethod
@@ -2080,7 +2171,9 @@ class TransformerSampler:
         '''
         Returns the most likely token (as an int).
         '''
-        pass
+        out = logits.argmax().item()
+        return out
+    
 
     @staticmethod
     def apply_temperature(logits: Float[Tensor, "d_vocab"], temperature: float) -> Float[Tensor, "d_vocab"]:
@@ -2122,7 +2215,18 @@ class TransformerSampler:
 
 ## Main Sampling Function
 
-The first thing you should do is implement the `sample` method. This takes in a prompt (in the form of a string), encodes it as a sequence of token ids using `self.tokenizer.encode`, and then continually generates new tokens by repeating the following steps:
+The first thing you should do is implement the `sample` method.
+
+### Exercise - implement `sample`
+
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 20-25 minutes on this exercise.
+```
+
+This function takes in a prompt (in the form of a string), encodes it as a sequence of token ids using `self.tokenizer.encode`, and then continually generates new tokens by repeating the following steps:
 
 1. Passing the tokenized prompt through the model to get logits,
 2. Taking the logit vector corresponding to the last token in the prompt (i.e. the prediction for the *next* token),
@@ -2243,6 +2347,7 @@ class TransformerSampler:
         return self.tokenizer.decode(input_ids)
     
     
+    
     @t.inference_mode()
     def beam_search(
         self,
@@ -2262,7 +2367,7 @@ class TransformerSampler:
         kwargs are passed to sample_next_token, to give detailed instructions on how 
         new tokens are chosen.
         '''
-        raise NotImplementedError()
+        pass
     
 
     @staticmethod
@@ -2305,7 +2410,6 @@ class TransformerSampler:
         '''
         Returns the most likely token (as an int).
         '''
-        # SOLUTION
         out = logits.argmax().item()
         return out
     
@@ -2319,6 +2423,7 @@ class TransformerSampler:
         return logits / temperature
     
 
+
     @staticmethod
     def apply_frequency_penalty(input_ids: Int[Tensor, "seq_len"], logits: Float[Tensor, "d_vocab"], freq_penalty: float) -> Float[Tensor, "d_vocab"]:
         '''
@@ -2329,6 +2434,7 @@ class TransformerSampler:
         id_freqs = t.bincount(input_ids, minlength=d_vocab)
         return logits - freq_penalty * id_freqs
     
+
     
     @staticmethod
     def sample_basic(logits: Float[Tensor, "d_vocab"]) -> int:
@@ -2339,6 +2445,7 @@ class TransformerSampler:
         sampled_token = t.distributions.categorical.Categorical(logits=logits).sample()
         return sampled_token.item()
     
+
 
     @staticmethod
     def sample_top_k(logits: Float[Tensor, "d_vocab"], k: int) -> int:
@@ -2352,6 +2459,7 @@ class TransformerSampler:
         # Get the actual token id, as an int
         return top_k_token_ids[sampled_token_idx].item()
     
+
 
     @staticmethod
     def sample_top_p(logits: Float[Tensor, "d_vocab"], top_p: float, min_tokens_to_keep: int = 1) -> int:
@@ -2387,6 +2495,13 @@ Note that this will be slow since we aren't batching the samples, but don't worr
 
 ### Exercise - Basic Sampling
 
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to 5-10 minutes on this exercise.
+```
+
 Implement basic sampling in the `TransformerSampler` class above, then run the code below to verify your solution works.
 
 
@@ -2406,7 +2521,7 @@ if MAIN:
     }
     frequency_of_top_5 = defaultdict(int)
     
-    N = 7500
+    N = 10_000
     for _ in tqdm(range(N)):
         token = TransformerSampler.sample_next_token(input_ids.squeeze(), logits)
         frequency_of_top_5[tokenizer.decode(token)] += 1
@@ -2439,7 +2554,14 @@ def sample_basic(logits: t.Tensor) -> int:
 </details>
 
 
-### Temperature
+### Exercise - Temperature
+
+```c
+Difficulty: 🟠⚪⚪⚪⚪
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to 5-10 minutes on this exercise.
+```
 
 Temperature sounds fancy, but it's literally just dividing the logits by the temperature. You should implement this in your `TransformerSampler` class now.
 
@@ -2486,6 +2608,13 @@ The limit when temperature goes to infinity is uniform random sampling over all 
 
 
 ### Exercise - Frequency Penalty
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠⚪⚪⚪⚪
+
+You should spend up to 10-15 minutes on this exercise.
+```
 
 The frequency penalty is simple as well: count the number of occurrences of each token, then subtract `freq_penalty` for each occurrence. Hint: use `t.bincount` (documentation [here](https://pytorch.org/docs/stable/generated/torch.bincount.html)) to do this in a vectorized way.
 
@@ -2573,6 +2702,15 @@ Conceptually, the steps in top-k sampling are:
 - Normalize and sample
 
 
+### Exercise - implement `sample_top_k`
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠⚪⚪⚪⚪
+
+You should spend up to 5-10 minutes on this exercise.
+```
+
 Implement the method `sample_top_k` now. Your implementation should stay in log-space throughout (don't exponentiate to obtain probabilities). This means you don't actually need to worry about normalizing, because `Categorical` accepts unnormalised logits.
 
 
@@ -2658,7 +2796,14 @@ The steps are:
 Optionally, refer to the paper [The Curious Case of Neural Text Degeneration](https://arxiv.org/pdf/1904.09751.pdf) for some comparison of different methods.
 
 
-#### Exercise - implement `sample_top_p`
+### Exercise - implement `sample_top_p`
+
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠⚪⚪⚪⚪
+
+You should spend up to 15-20 minutes on this exercise.
+```
 
 <details>
 <summary>Example of top-p sampling (if you're confused)</summary>
@@ -2795,20 +2940,66 @@ Note how after each "generate" stage, we have `num_beams ** 2` possible completi
 How do we deal with sequences that terminate early (i.e. by generating an EOS token)? Answer - we append them to the list of completions which we'll return at the end, and remove them from the generation tree. Our algorithm terminates when either all our sequences have length `max_new_tokens` larger than the initial prompt length, or we've generated `num_returns_sequences` terminating sequences.
 
 
-#### Exercise - implement `beam_search`
+### Exercise - implement `beam_search`
+
+```c
+Difficulty: 🟠🟠🟠🟠⚪
+Importance: 🟠⚪⚪⚪⚪
+
+You should spend up to 30-40 minutes on this exercise.
+```
 
 You should now complete the `beam_search` method in your `TransformerSampler` class.
 
-We've provided you with a dataclass `Beams`, which you are recommended to use. This class has two important methods for you to fill in: `generate` and `filter` (which correspond to the two stages in the diagram above). There are also a few of helper functions in this class:
+We've provided one possible template for you to use: the class `Beams`, with important methods `generate` and `filter` for you to fit in (which correspond to the two stages in the diagram above). There are also a few of helper functions in this class:
 
 * `new_beams`, which creates a new `Beams` object from an old one.
 * `__getitem__`, which allows you to index into a `Beams` object to get a specific batch of beams.
 * `logprobs_and_completions`, which turns a `Beams` object into a list of (logprob sum, string completion) tuples (useful for getting your final output).
 * `print`, which prints out the current state of the beams (useful for debugging, if you run `beam_search` with `verbose=True`).
 
-Note that not all of these are necessary for you to complete the exercise, they are just designed to reduce friction if you want to use them.
+You can then fill in the `beam_search` function, using this class and its methods.
 
-Why have we chosen to use classes here, rather than e.g. keeping everything in the form of a list of (logprob sum, string completion) tuples? Like we've encountered before, there is significant advantage that comes with writing modular code: it's flexible, legible, and easily extensible. There are bonus exercises below where you'll implement caching in your transformer, and you should find code like this much easier to extend to cover caching than if you'd written everything in one big function.
+We've provided unit tests for the `generate` and `filter` functions, so you can verify that these are correct before moving on to the full `beam_search` function.
+
+**Note that using the `Beams` class is not strictly necessary, you could fill in the `beam_search` function directly if you prefer.** The `Beams` class is just meant to provide one example way you might implement this function. Often, modular code like this is easier to write and debug, and easier to extend to cover new use cases (e.g. when we use caching in the bonus exercises).
+
+#### Why all the n-gram repetition?
+
+You should observe that, while the output of beam search is sometimes more fluent than some of the other sampling methods you implement, it also has an unfortunate tendency to repeat sentences or sequences. This makes sense - if the model produces a sentence with a relatively high logit sum, then it will want to produce the same sentence again even if it doesn't make a lot of sense in context.
+
+A common solution is to ban repetition of n-grams. We've provided the argument `no_repeat_ngram_size` in the `generate` method for this purpose. Using this argument should prevent the model from repeating any n-grams of that size. Good values of this parameter to try are 2 or 3.
+
+However, first you should focus on getting a working version of beam search *without* using this argument.
+
+<details>
+<summary>Hint (for <code>no_repeat_ngram_size</code>)</summary>
+
+It might be helpful to implement the following method first. You can use this rather than `torch.topk` in your `generate` method.
+
+```python
+def get_topk_non_repeating(
+    self,
+    logprobs: Float[Tensor, "batch d_vocab"], 
+    no_repeat_ngram_size: int,
+    k: int, 
+) -> Tuple[Float[Tensor, "k"], Int[Tensor, "k"]]:
+    '''
+    logprobs: 
+        tensor of the log-probs for the next token
+    no_repeat_ngram_size:
+        size of ngram to avoid repeating
+    k:
+        number of top logits to return, for each beam in our collection
+
+    Returns:
+        equivalent to the output of `logprobs.topk(dim=-1)`, but makes sure
+        that no returned tokens would produce an ngram of size  `no_repeat_ngram_size`
+        which has already appeared in `self.tokens`.
+    '''
+    pass
+```
+</details>
 
 
 ```python
@@ -2848,6 +3039,7 @@ class Beams:
         '''
         pass
 
+        
     def filter(self, num_beams: int) -> Tuple["Beams", "Beams"]:
         '''
         Returns:
@@ -2860,6 +3052,7 @@ class Beams:
         '''
         pass
 
+        
     def print(self, title="Best completions", max_print_chars=80) -> None:
         '''
         Prints out a set of sequences with their corresponding logitsums.
@@ -2895,16 +3088,15 @@ def beam_search(
     To modularize this function, most of the actual complexity is in the Beams class,
     in the `generate` and `filter` methods.
     '''
-
     assert num_return_sequences <= num_beams
     self.model.eval()
 
-        pass
+    pass
 
 
 ```
 
-Example usage of the `Beams` class, and the `print` method:
+Example usage of the `Beams` class, and the `print` method (not the logitsums aren't necessarily accurate, this example is just an illustration):
 
 
 ```python
@@ -2931,10 +3123,38 @@ And here are some unit tests for your `generate` and `filter` methods:
 ```python
 
 if MAIN:
+    print("Testing generate, without no_repeat_ngram_size argument:")
     new_beams = beams.generate(2)
     new_beams.print()
+    assert new_beams.logprobs_and_completions[0][1] == "this is the third time"
+
+```
+
+```python
+
+if MAIN:
+    print("Testing generate, with no_repeat_ngram_size argument:")
     
-    # Should get first row as [ -11.829 │ 'this is the third time' ]
+    bigram_beams = Beams(
+        model, 
+        tokenizer,
+        logprob_sums = t.tensor([-0.0]).to(device),
+        tokens = t.tensor([[530, 734, 530, 734]]).to(device)
+        # tokens are " one two one two"
+    )
+    
+    # With no_repeat_ngram_size=1, should not generate the token " one" or " two"
+    new_bigram_beams = bigram_beams.generate(3, no_repeat_ngram_size=1)
+    new_bigram_beams.print()
+    assert all([not (completion[1].endswith(" one") or completion[1].endswith(" two")) for completion in new_bigram_beams.logprobs_and_completions])
+    
+    # With no_repeat_ngram_size=2, it can generate " two" (which it should), but not " one"
+    new_bigram_beams = bigram_beams.generate(3, no_repeat_ngram_size=2)
+    new_bigram_beams.print()
+    assert all([not completion[1].endswith(" one") for completion in new_bigram_beams.logprobs_and_completions])
+    assert any([not completion[1].endswith(" two") for completion in new_bigram_beams.logprobs_and_completions])
+    
+    print("All tests for `generate` passed!")
 
 ```
 
@@ -2954,14 +3174,13 @@ if MAIN:
     t.testing.assert_close(best_beams.tokens, tokens[[0]])
     
     assert early_terminations.logprobs_and_completions == [(-2.0, "Stop" + tokenizer.eos_token)]
+    
+    print("All tests for `filter` passed!")
 
 ```
 
-If you're stuck on these methods, see the solutions for `filter` and `generate` below.
-
-
 <details>
-<summary>Solutions (generate and filter)</summary>
+<summary>Solutions (for <code>generate</code> and <code>filter</code>)</summary>
 
 ```python
 def generate(self, new_beams: int, no_repeat_ngram_size: Optional[int] = None) -> "Beams":
@@ -3057,107 +3276,9 @@ if MAIN:
 ```
 
 <details>
-<summary>Solution (beam search)</summary>
+<summary>Solution (full)</summary>
 
-```python
-@t.inference_mode()
-def beam_search(
-    self: TransformerSampler,
-    prompt: str, 
-    num_return_sequences: int, 
-    num_beams: int, 
-    max_new_tokens: int, 
-    no_repeat_ngram_size: Optional[int] = None,
-    verbose=False
-) -> List[Tuple[float, Tensor]]:
-    '''
-    Implements a beam search, by repeatedly performing the `generate` and `filter` steps (starting
-    from the initial prompt) until either of the two stopping criteria are met:
-
-        (1) we've generated `max_new_tokens` tokens, or
-        (2) we've generated `num_returns_sequences` terminating sequences.
-
-    To modularize this function, most of the actual complexity is in the Beams class,
-    in the `generate` and `filter` methods.
-
-    Optional argument `no_repeat_ngram_size` means your model won't generate any sequences with
-    a repeating n-gram of this length (don't worry about implementing this until later).
-    '''
-
-    assert num_return_sequences <= num_beams
-    self.model.eval()
-
-    # SOLUTION
-    tokens = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
-
-    # List for final beams to return (and early terminations)
-    final_logprobs_and_completions: List[Tuple[float, str]] = []
-    # Keep track of all best beams after each step
-    best_beams = Beams(self.model, self.tokenizer, t.tensor([0.0]).to(device), tokens)
-
-    for n in tqdm(range(max_new_tokens)):
-
-        # Generation step
-        best_beams = best_beams.generate(num_beams)
-
-        # Filtering step
-        best_beams, best_beams_terminated = best_beams.filter(num_beams)
-        final_logprobs_and_completions.extend(best_beams_terminated.logprobs_and_completions)
-
-        # Print output
-        if verbose:
-            best_beams.print()
-
-        # Check stopping condition
-        if len(final_logprobs_and_completions) >= num_return_sequences:
-            return final_logprobs_and_completions[:num_return_sequences]
-
-    final_logprobs_and_completions.extend(best_beams.logprobs_and_completions)
-    final_logprobs_and_completions = final_logprobs_and_completions[:num_return_sequences]
-    return final_logprobs_and_completions
-```
-</details>
-
-
-You should observe that, while the output of beam search is sometimes more fluent than some of the other sampling methods you implement, it also has an unfortunate tendency to repeat sentences or sequences. This makes sense - if the model produces a sentence with a relatively high logit sum, then it will want to produce the same sentence again even if it doesn't make a lot of sense in context.
-
-A common solution is to ban repetition of n-grams. Try to rewrite your function above to make use of the the argument `no_repeat_ngram_size`, which should prevent the model from repeating any n-grams of that size. Good values of this parameter to try are 2 or 3.
-
-
-<details>
-<summary>Hint (if you're not sure where to start)</summary>
-
-It might be helpful to implement the following function first. You can use this function rather than `torch.topk` in your `generate` method.
-
-```python
-def get_topk_non_repeating(
-    self,
-    logprobs: Float[Tensor, "batch d_vocab"], 
-    no_repeat_ngram_size: int,
-    k: int, 
-) -> Tuple[Float[Tensor, "k"], Int[Tensor, "k"]]:
-    '''
-    logprobs: 
-        tensor of the log-probs for the next token
-    no_repeat_ngram_size:
-        size of ngram to avoid repeating
-    k:
-        number of top logits to return, for each beam in our collection
-
-    Returns:
-        equivalent to the output of `logprobs.topk(dim=-1)`, but makes sure
-        that no returned tokens would produce an ngram of size  `no_repeat_ngram_size`
-        which has already appeared in `self.tokens`.
-    '''
-    pass
-```
-
-</details>
-
-<details>
-<summary>Solution </summary>
-
-We replace the `topk` call in the `generate` method with the following function:
+A solution for the class method `get_topk_non_repeating`:
 
 ```python
 def get_topk_non_repeating(
@@ -3203,6 +3324,63 @@ def get_topk_non_repeating(
     return logprobs.topk(k=k, dim=-1)
 ```
 
+and for the main function:
+
+```python
+@t.inference_mode()
+def beam_search(
+    self: TransformerSampler,
+    prompt: str, 
+    num_return_sequences: int, 
+    num_beams: int, 
+    max_new_tokens: int, 
+    no_repeat_ngram_size: Optional[int] = None,
+    verbose=False
+) -> List[Tuple[float, Tensor]]:
+    '''
+    Implements a beam search, by repeatedly performing the `generate` and `filter` steps (starting
+    from the initial prompt) until either of the two stopping criteria are met:
+
+        (1) we've generated `max_new_tokens` tokens, or
+        (2) we've generated `num_returns_sequences` terminating sequences.
+
+    To modularize this function, most of the actual complexity is in the Beams class,
+    in the `generate` and `filter` methods.
+    '''
+
+    assert num_return_sequences <= num_beams
+    self.model.eval()
+
+    # SOLUTION
+    tokens = self.tokenizer.encode(prompt, return_tensors="pt").to(device)
+
+    # List for final beams to return (and early terminations)
+    final_logprobs_and_completions: List[Tuple[float, str]] = []
+    # Keep track of all best beams after each step
+    best_beams = Beams(self.model, self.tokenizer, t.tensor([0.0]).to(device), tokens)
+
+    for n in tqdm(range(max_new_tokens)):
+
+        # Generation step
+        best_beams = best_beams.generate(num_beams, no_repeat_ngram_size)
+
+        # Filtering step
+        best_beams, best_beams_terminated = best_beams.filter(num_beams)
+        final_logprobs_and_completions.extend(best_beams_terminated.logprobs_and_completions)
+
+        # Print output
+        if verbose:
+            best_beams.print()
+
+        # Check stopping condition
+        if len(final_logprobs_and_completions) >= num_return_sequences:
+            return final_logprobs_and_completions[:num_return_sequences]
+
+    final_logprobs_and_completions.extend(best_beams.logprobs_and_completions)
+    final_logprobs_and_completions = final_logprobs_and_completions[:num_return_sequences]
+    return final_logprobs_and_completions
+```
+
 </details>
 
 
@@ -3227,6 +3405,15 @@ At each attention layer, the only things the attention layer needs from the prev
 
 </details>
 
+
+### Exercise - implement caching
+
+```c
+Difficulty: 🟠🟠🟠🟠🟠
+Importance: 🟠⚪⚪⚪⚪
+
+You are expected to spend well over an hour on this exercise, if you choose to do it.
+```
 
 Modify your GPT-2 to optionally use a cache. When you run your GPT on `"My life motto:"`, it should store the necessary values in the cache. Then in the next forward pass with just `" Always"` as input, it should load the cached values instead of recomputing them (and update the cache). This only needs to work with a single input sequence (batch size of 1), and you can assume that after the first forward pass, the input will be just one token.
 
@@ -3886,7 +4073,7 @@ print("Tests passed!")
 
 
 func_page_list = [
-    (section_0, '🏠 Home'),     (section_1, '1️⃣ Understanding Inputs & Outputs of a Transformer'),     (section_2, '2️⃣ Clean Transformer Implementation'),     (section_3, '3️⃣ Training a Transformer'),     (section_4, '4️⃣ Sampling from a Transformer'), 
+    (section_0, "🏠 Home"),     (section_1, "1️⃣ Understanding Inputs & Outputs of a Transformer"),     (section_2, "2️⃣ Clean Transformer Implementation"),     (section_3, "3️⃣ Training a Transformer"),     (section_4, "4️⃣ Sampling from a Transformer"), 
 ]
 
 func_list = [func for func, page in func_page_list]
