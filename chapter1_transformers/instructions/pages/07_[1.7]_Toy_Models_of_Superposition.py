@@ -91,6 +91,7 @@ A key point to make here is that, perhaps more so than any other section in this
 > 
 > - Understand the concept of superposition, and why models need to do it
 > - Understand the difference between superposition and polysemanticity
+> - Understand the difference between neuron and bottleneck superposition (or computational and representational superposition)
 > - Build & train the toy model from Anthropic's paper, replicate the main results
 > - Understand the geometric intuitions behind superposition, and how they relate to the more general ideas of superposition in larger models
 > - See how superposition varies when you change the following characteristics of the features:
@@ -147,6 +148,9 @@ Here are a few recommended resources to help you get started. Each one is labell
     * Read the post, up to and including "Tips" (although some parts of it might make more sense after you've read the other things here).
 * Neel Nanda's [Dynalist notes on superposition](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=3br1psLRIjQCOv2T4RN3V6F2)
     * These aren't long, you should skim through them, and also use them as a reference during these exercises.
+* Appendix of [Finding Neurons in a Haystack: Case Studies with Sparse Probing](https://arxiv.org/abs/2305.01610)
+    * Despite this paper not *just* being about superposition, it has some of the best-written explanations of superposition concepts.
+    * Sections A.6 - A.9 are particularly good.
 * [Toy Models of Superposition](https://transformer-circuits.pub/2022/toy_model/index.html) (Anthropic paper)
     * You should read up to & including the "Summary: A Hierarchy of Feature Properties" section.
     * The first few sections ("Key Results", "Definitions and Motivation", and "Empirical Phenomena" are particularly important).
@@ -1204,7 +1208,7 @@ for n_features in [5, 6, 8]:
 
     config = Config(
         n_instances = 10,
-        n_features = n_features,
+        n_features = 8,
         n_hidden = 5,
     )
 

@@ -81,6 +81,8 @@ You'll apply the technique of DQN to master the famous CartPole environment (bel
 
 
 ```python
+%pip install wandb==0.13.10 # makes sure video works!
+
 import os
 os.environ["ACCELERATE_DISABLE_RICH"] = "1"
 os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -2419,7 +2421,7 @@ def test_probe(probe_idx: int):
     tolerances = [5e-4, 5e-4, 5e-4, 5e-4, 1e-3]
     obs = t.tensor(obs_for_probes[probe_idx-1]).to(device)
 
-    # YOUR CODE HERE - create a PPOTrainer instance, and train your agent
+    # YOUR CODE HERE - create a DQNTrainer instance, and train your agent
     q_network = train(args)
 
     value = q_network(obs)

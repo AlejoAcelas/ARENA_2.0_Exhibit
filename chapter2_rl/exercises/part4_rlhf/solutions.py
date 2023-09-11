@@ -14,7 +14,7 @@ from typing import Any, List, Optional, Union, Tuple
 # Make sure exercises are in the path
 chapter = r"chapter2_rl"
 exercises_dir = Path(f"{os.getcwd().split(chapter)[0]}/{chapter}/exercises").resolve()
-section_dir = exercises_dir / "part3_ppo"
+section_dir = exercises_dir / "part4_rlhf"
 if str(exercises_dir) not in sys.path: sys.path.append(str(exercises_dir))
 
 import part4_rlhf.tests as tests
@@ -30,11 +30,13 @@ imdb = load_dataset("imdb", split="train+test")
 
 # %%
 
-def label_split(dataset) -> None:
+def label_split(dataset) -> Tuple[int, int]:
 	positive_samples = dataset['label'].count(1)
 	negative_samples = dataset['label'].count(0)
 
 	print(f"Positive reviews: {positive_samples}, Negative reviews: {negative_samples}")
+
+	return positive_samples, negative_samples
 
 
 if MAIN:
@@ -70,6 +72,8 @@ if MAIN:
 def reward_model(samples, **kwargs):
     '''
     Returns the rewards for the given samples, using the reward model `model`.
+    
+    kwargs are passed to your model during a forward pass.
     '''
     # SOLUTION
     tokenizer = AutoTokenizer.from_pretrained("lvwerra/distilbert-imdb")
@@ -224,7 +228,7 @@ def ppo_config():
 			pipeline="PromptPipeline",
 			trainer="AcceleratePPOTrainer",
 		),
-		model=ModelConfig(model_path="lvwerra/gpt2", num_layers_unfrozen=2),
+		model=ModelConfig(model_path="lvwerra/gpt2-imdb", num_layers_unfrozen=2),
 		tokenizer=TokenizerConfig(tokenizer_path="gpt2", truncation_side="right"),
 		optimizer=OptimizerConfig(
 			name="adamw", kwargs=dict(lr=3e-5, betas=(0.9, 0.95), eps=1.0e-8, weight_decay=1.0e-6)
