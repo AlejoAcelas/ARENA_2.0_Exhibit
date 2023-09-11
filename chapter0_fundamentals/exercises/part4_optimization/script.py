@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 import pytorch_lightning as pl
 import torch as t
 import torch.nn.functional as F
-
+import wandb
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets
@@ -25,13 +25,6 @@ os.chdir(section_dir)
 
 from part3_resnets.solutions import (
     IMAGENET_TRANSFORM, get_resnet_for_feature_extraction)
-
-IMAGENET_TRANSFORM = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-])
-
 
 import part4_optimization.tests as tests
 
@@ -137,7 +130,6 @@ class LitResNet(pl.LightningModule):
         )
         return optimizer
 
-import wandb
 
 @dataclass
 class ResNetFinetuningArgsWandb(ResNetFinetuningArgs):

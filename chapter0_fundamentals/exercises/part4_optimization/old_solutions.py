@@ -1,15 +1,16 @@
 # %%
+
 import os
 
 os.environ["ACCELERATE_DISABLE_RICH"] = "1"
 import sys
 import pandas as pd
 import torch as t
-from torch import Tensor, optim
+from torch import optim
 import torch.nn.functional as F
 from torchvision import datasets
 from torch.utils.data import DataLoader, Subset
-from typing import Callable, Iterable, List, Tuple, Optional
+from typing import Callable, Iterable, Tuple, Optional
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from dataclasses import dataclass
@@ -38,22 +39,11 @@ device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 MAIN = __name__ == "__main__"
 
-
-# %%
-import einops
+# %% 1️⃣ OPTIMIZERS
 
 
-def pathological_curve_loss(x: t.Tensor, y: t.Tensor, angle=0):
+def pathological_curve_loss(x: t.Tensor, y: t.Tensor):
     # Example of a pathological curvature. There are many more possible, feel free to experiment here!
-    rotations = t.tensor(
-        [
-            [np.cos(angle), np.sin(angle)],
-            [-np.sin(angle), np.cos(angle)],
-        ],
-        dtype=x.dtype,
-    )
-    xy = t.stack([x, y], dim=-1)
-    x, y = einops.einsum(rotations, xy, "a b, ... b -> a ...")
     x_loss = t.tanh(x) ** 2 + 0.01 * t.abs(x)
     y_loss = t.sigmoid(y)
     return x_loss + y_loss
@@ -62,8 +52,9 @@ def pathological_curve_loss(x: t.Tensor, y: t.Tensor, angle=0):
 if MAIN:
     plot_fn(pathological_curve_loss)
 
-
 # %%
+
+
 def opt_fn_with_sgd(
     fn: Callable, xy: t.Tensor, lr=0.001, momentum=0.98, n_iters: int = 100
 ):
@@ -76,60 +67,47 @@ def opt_fn_with_sgd(
 
     Return: (n_iters, 2). The (x,y) BEFORE each step. So out[0] is the starting point.
     """
-    results = []
-    optim = t.optim.SGD([xy], lr=lr, momentum=momentum)
+    assert xy.requires_grad
+
+    xys = t.zeros((n_iters, 2))
+
+    # YOUR CODE HERE: run optimization, and populate `xys` with the coordinates before each step
+    optimizer = optim.SGD([xy], lr=lr, momentum=momentum)
 
     for i in range(n_iters):
-        optim.param_groups[0]["momentum"] = momentum ** (i / n_iters)
-        results.append(xy.tolist())
-        val = fn(*xy)
-        val.backward()
-        optim.step()
-        optim.zero_grad()
+        xys[i] = xy.detach()
+        out = fn(xy[0], xy[1])
+        out.backward()
+        optimizer.step()
+        optimizer.zero_grad()
 
-    return t.tensor(results)
+    return xys
 
-
-if MAIN:
-    xy = t.tensor([2.5, 2.5], requires_grad=True)
-    out = opt_fn_with_sgd(pathological_curve_loss, xy, lr=0.02, momentum=0.99)
-    print(out[-1])
 
 # %%
+
+
 if MAIN:
     points = []
 
     optimizer_list = [
         (optim.SGD, {"lr": 0.1, "momentum": 0.0}),
         (optim.SGD, {"lr": 0.02, "momentum": 0.99}),
-        (optim.SGD, {"lr": 0.06, "momentum": 0.5}),
-        (optim.SGD, {"lr": 0.06, "momentum": 0.5}),
     ]
-    optimizer_list += [
-        (optim.SGD, {"lr": 0.4, "momentum": 0.9 + x / 1000}) for x in range(0, 101, 10)
-    ]
-    n_iters = 500
 
     for optimizer_class, params in optimizer_list:
         xy = t.tensor([2.5, 2.5], requires_grad=True)
         xys = opt_fn_with_sgd(
-            pathological_curve_loss,
-            xy=xy,
-            lr=params["lr"],
-            momentum=params["momentum"],
-            n_iters=n_iters,
+            pathological_curve_loss, xy=xy, lr=params["lr"], momentum=params["momentum"]
         )
 
         points.append((xys, optimizer_class, params))
 
-    plot_fn_with_points(pathological_curve_loss, points=points[-9:])
+    plot_fn_with_points(pathological_curve_loss, points=points)
+
+# %%
 
 
-for x in points:
-    print(x[0][-1])
-
-
-# %% Plot the evolution of momentum
 class SGD:
     def __init__(
         self,
@@ -141,17 +119,18 @@ class SGD:
         """Implements SGD with momentum.
 
         Like the PyTorch version, but assume nesterov=False, maximize=False, and dampening=0
-            https://pytorch.org/docs/stable/generated/torch.optim.SGD.html#torch.optim.SGD
+                https://pytorch.org/docs/stable/generated/torch.optim.SGD.html#torch.optim.SGD
 
         """
         self.params = list(
             params
         )  # turn params into a list (because it might be a generator)
         self.lr = lr
-        self.momentum = momentum
-        self.weight_decay = weight_decay
+        self.mu = momentum
+        self.lmda = weight_decay
+        self.t = 0
 
-        self.running_momentums: List[Optional[Tensor]] = [None] * len(self.params)
+        self.gs = [t.zeros_like(p) for p in self.params]
 
     def zero_grad(self) -> None:
         for param in self.params:
@@ -159,22 +138,18 @@ class SGD:
 
     @t.inference_mode()
     def step(self) -> None:
-        for i, param in enumerate(self.params):
-            if self.weight_decay != 0:
-                grad = param.grad + self.weight_decay * param
-            else:
-                grad = param.grad
-            assert grad is not None
-
-            if self.momentum != 0:
-                if self.running_momentums[i] is None:
-                    self.running_momentums[i] = grad  # clone?
-                else:
-                    self.running_momentums[i].set_(
-                        self.momentum * self.running_momentums[i] + grad
-                    )
-                grad = self.running_momentums[i]
-            param.add_(grad, alpha=-self.lr)
+        for i, (g, param) in enumerate(zip(self.gs, self.params)):
+            # Implement the algorithm from the pseudocode to get new values of params and g
+            new_g = param.grad
+            if self.lmda != 0:
+                new_g = new_g + (self.lmda * param)
+            if self.mu != 0 and self.t > 0:
+                new_g = (self.mu * g) + new_g
+            # Update params (remember, this must be inplace)
+            self.params[i] -= self.lr * new_g
+            # Update g
+            self.gs[i] = new_g
+        self.t += 1
 
     def __repr__(self) -> str:
         return f"SGD(lr={self.lr}, momentum={self.mu}, weight_decay={self.lmda})"
@@ -183,8 +158,9 @@ class SGD:
 if MAIN:
     tests.test_sgd(SGD)
 
-
 # %%
+
+
 class RMSprop:
     def __init__(
         self,
@@ -198,39 +174,39 @@ class RMSprop:
         """Implements RMSprop.
 
         Like the PyTorch version, but assumes centered=False
-            https://pytorch.org/docs/stable/generated/torch.optim.RMSprop.html
+                https://pytorch.org/docs/stable/generated/torch.optim.RMSprop.html
 
         """
-        self.params = list(
-            params
-        )  # turn params into a list (because it might be a generator)
+        self.params = list(params)
         self.lr = lr
-        self.momentum = momentum
-        self.weight_decay = weight_decay
-        self.alpha = alpha
         self.eps = eps
+        self.mu = momentum
+        self.lmda = weight_decay
+        self.alpha = alpha
 
-        self.v = [t.zeros_like(param) for param in self.params]
-        self.b = [t.zeros_like(param) for param in self.params]
+        self.gs = [t.zeros_like(p) for p in self.params]
+        self.bs = [t.zeros_like(p) for p in self.params]
+        self.vs = [t.zeros_like(p) for p in self.params]
 
     def zero_grad(self) -> None:
-        for param in self.params:
-            param.grad = None
+        for p in self.params:
+            p.grad = None
 
     @t.inference_mode()
     def step(self) -> None:
-        for param, v, b in zip(self.params, self.v, self.b):
-            grad = param.grad
-            if self.weight_decay != 0:
-                grad = grad + self.weight_decay * param
-
-            v.set_(self.alpha * v + (1 - self.alpha) * grad.square())
-
-            if self.momentum > 0:
-                b.set_(self.momentum * b + grad / (v.sqrt() + self.eps))
-                param.add_(b, alpha=-self.lr)
+        for i, (p, g, b, v) in enumerate(zip(self.params, self.gs, self.bs, self.vs)):
+            new_g = p.grad
+            if self.lmda != 0:
+                new_g = new_g + self.lmda * p
+            self.gs[i] = new_g
+            new_v = self.alpha * v + (1 - self.alpha) * new_g.pow(2)
+            self.vs[i] = new_v
+            if self.mu > 0:
+                new_b = self.mu * b + new_g / (new_v.sqrt() + self.eps)
+                p -= self.lr * new_b
+                self.bs[i] = new_b
             else:
-                param.add_(grad / (v.sqrt() + self.eps), alpha=-self.lr)
+                p -= self.lr * new_g / (new_v.sqrt() + self.eps)
 
     def __repr__(self) -> str:
         return f"RMSprop(lr={self.lr}, eps={self.eps}, momentum={self.mu}, weight_decay={self.lmda}, alpha={self.alpha})"
@@ -239,8 +215,9 @@ class RMSprop:
 if MAIN:
     tests.test_rmsprop(RMSprop)
 
-
 # %%
+
+
 class Adam:
     def __init__(
         self,
@@ -253,38 +230,38 @@ class Adam:
         """Implements Adam.
 
         Like the PyTorch version, but assumes amsgrad=False and maximize=False
-            https://pytorch.org/docs/stable/generated/torch.optim.Adam.html
+                https://pytorch.org/docs/stable/generated/torch.optim.Adam.html
         """
         self.params = list(params)
         self.lr = lr
-        self.betas = betas
+        self.beta1, self.beta2 = betas
         self.eps = eps
-        self.weight_decay = weight_decay
+        self.lmda = weight_decay
+        self.t = 1
 
-        self.m = [t.zeros_like(param) for param in self.params]
-        self.v = [t.zeros_like(param) for param in self.params]
-
-        self.t = 0
+        self.gs = [t.zeros_like(p) for p in self.params]
+        self.ms = [t.zeros_like(p) for p in self.params]
+        self.vs = [t.zeros_like(p) for p in self.params]
 
     def zero_grad(self) -> None:
-        for param in self.params:
-            param.grad = None
+        for p in self.params:
+            p.grad = None
 
     @t.inference_mode()
     def step(self) -> None:
+        for i, (p, g, m, v) in enumerate(zip(self.params, self.gs, self.ms, self.vs)):
+            new_g = p.grad
+            if self.lmda != 0:
+                new_g = new_g + self.lmda * p
+            self.gs[i] = new_g
+            new_m = self.beta1 * m + (1 - self.beta1) * new_g
+            new_v = self.beta2 * v + (1 - self.beta2) * new_g.pow(2)
+            self.ms[i] = new_m
+            self.vs[i] = new_v
+            m_hat = new_m / (1 - self.beta1**self.t)
+            v_hat = new_v / (1 - self.beta2**self.t)
+            p -= self.lr * m_hat / (v_hat.sqrt() + self.eps)
         self.t += 1
-        for param, m, v in zip(self.params, self.m, self.v):
-            grad = param.grad
-            assert grad is not None
-            if self.weight_decay != 0:
-                grad = grad + self.weight_decay * param
-            m.set_(self.betas[0] * m + (1 - self.betas[0]) * grad)
-            v.set_(self.betas[1] * v + (1 - self.betas[1]) * grad.square())
-
-            mhat = m / (1 - self.betas[0] ** self.t)
-            vhat = v / (1 - self.betas[1] ** self.t)
-
-            param.add_(mhat / (vhat.sqrt() + self.eps), alpha=-self.lr)
 
     def __repr__(self) -> str:
         return f"Adam(lr={self.lr}, beta1={self.beta1}, beta2={self.beta2}, eps={self.eps}, weight_decay={self.lmda})"
@@ -293,8 +270,9 @@ class Adam:
 if MAIN:
     tests.test_adam(Adam)
 
-
 # %%
+
+
 class AdamW:
     def __init__(
         self,
@@ -307,39 +285,39 @@ class AdamW:
         """Implements Adam.
 
         Like the PyTorch version, but assumes amsgrad=False and maximize=False
-            https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html
+                https://pytorch.org/docs/stable/generated/torch.optim.Adam.html
         """
         self.params = list(params)
         self.lr = lr
-        self.betas = betas
+        self.beta1, self.beta2 = betas
         self.eps = eps
-        self.weight_decay = weight_decay
+        self.lmda = weight_decay
+        self.t = 1
 
-        self.m = [t.zeros_like(param) for param in self.params]
-        self.v = [t.zeros_like(param) for param in self.params]
-
-        self.t = 0
+        self.gs = [t.zeros_like(p) for p in self.params]
+        self.ms = [t.zeros_like(p) for p in self.params]
+        self.vs = [t.zeros_like(p) for p in self.params]
 
     def zero_grad(self) -> None:
-        for param in self.params:
-            param.grad = None
+        for p in self.params:
+            p.grad = None
 
     @t.inference_mode()
     def step(self) -> None:
+        for i, (p, g, m, v) in enumerate(zip(self.params, self.gs, self.ms, self.vs)):
+            new_g = p.grad
+            if self.lmda != 0:
+                # new_g = new_g + self.lmda * p
+                p -= p * self.lmda * self.lr
+            self.gs[i] = new_g
+            new_m = self.beta1 * m + (1 - self.beta1) * new_g
+            new_v = self.beta2 * v + (1 - self.beta2) * new_g.pow(2)
+            self.ms[i] = new_m
+            self.vs[i] = new_v
+            m_hat = new_m / (1 - self.beta1**self.t)
+            v_hat = new_v / (1 - self.beta2**self.t)
+            p -= self.lr * m_hat / (v_hat.sqrt() + self.eps)
         self.t += 1
-        for param, m, v in zip(self.params, self.m, self.v):
-            grad = param.grad
-            assert grad is not None
-            if self.weight_decay != 0:
-                param *= 1 - self.lr * self.weight_decay
-
-            m.set_(self.betas[0] * m + (1 - self.betas[0]) * grad)
-            v.set_(self.betas[1] * v + (1 - self.betas[1]) * grad.square())
-
-            mhat = m / (1 - self.betas[0] ** self.t)
-            vhat = v / (1 - self.betas[1] ** self.t)
-
-            param -= self.lr * mhat / (vhat.sqrt() + self.eps)
 
     def __repr__(self) -> str:
         return f"AdamW(lr={self.lr}, beta1={self.beta1}, beta2={self.beta2}, eps={self.eps}, weight_decay={self.lmda})"
@@ -347,6 +325,7 @@ class AdamW:
 
 if MAIN:
     tests.test_adamw(AdamW)
+
 # %%
 
 
@@ -362,29 +341,32 @@ def opt_fn(
     optimizer_class: one of the optimizers you've defined, either SGD, RMSprop, or Adam
     optimzer_kwargs: keyword arguments passed to your optimiser (e.g. lr and weight_decay)
     """
-    results = []
-    optim = optimizer_class([xy], **optimizer_hyperparams)
+    assert xy.requires_grad
+
+    xys = t.zeros((n_iters, 2))
+    optimizer = optimizer_class([xy], **optimizer_hyperparams)
 
     for i in range(n_iters):
-        results.append(xy.tolist())
-        val = fn(*xy)
-        val.backward()
-        optim.step()
-        optim.zero_grad()
+        xys[i] = xy.detach()
+        out = fn(xy[0], xy[1])
+        out.backward()
+        optimizer.step()
+        optimizer.zero_grad()
 
-    return t.tensor(results)
+    return xys
 
 
 # %%
+
+
 if MAIN:
     points = []
 
     optimizer_list = [
         (SGD, {"lr": 0.03, "momentum": 0.99}),
-        (RMSprop, {"lr": 0.03, "alpha": 0.99, "momentum": 0.8}),
-        (Adam, {"lr": 0.3, "betas": (0.99, 0.99), "weight_decay": 0.001}),
+        (RMSprop, {"lr": 0.02, "alpha": 0.99, "momentum": 0.8}),
+        (Adam, {"lr": 0.2, "betas": (0.99, 0.99), "weight_decay": 0.005}),
     ]
-    optimizer_list += [(AdamW, optimizer_list[-1][1])]
 
     for optimizer_class, params in optimizer_list:
         xy = t.tensor([2.5, 2.5], requires_grad=True)
@@ -393,14 +375,119 @@ if MAIN:
             xy=xy,
             optimizer_class=optimizer_class,
             optimizer_hyperparams=params,
-            n_iters=300,
         )
         points.append((xys, optimizer_class, params))
 
     plot_fn_with_points(pathological_curve_loss, points=points)
 
+# %%
+
+
+def bivariate_gaussian(x, y, x_mean=0.0, y_mean=0.0, x_sig=1.0, y_sig=1.0):
+    norm = 1 / (2 * np.pi * x_sig * y_sig)
+    x_exp = (-1 * (x - x_mean) ** 2) / (2 * x_sig**2)
+    y_exp = (-1 * (y - y_mean) ** 2) / (2 * y_sig**2)
+    return norm * t.exp(x_exp + y_exp)
+
+
+def neg_trimodal_func(x, y):
+    z = -bivariate_gaussian(x, y, x_mean=1.0, y_mean=-0.5, x_sig=0.2, y_sig=0.2)
+    z -= bivariate_gaussian(x, y, x_mean=-1.0, y_mean=0.5, x_sig=0.2, y_sig=0.2)
+    z -= bivariate_gaussian(x, y, x_mean=-0.5, y_mean=-0.8, x_sig=0.2, y_sig=0.2)
+    return z
+
+
+if MAIN:
+    plot_fn(neg_trimodal_func, x_range=(-2, 2), y_range=(-2, 2))
 
 # %%
+
+
+def rosenbrocks_banana_func(x: t.Tensor, y: t.Tensor, a=1, b=100) -> t.Tensor:
+    return (a - x) ** 2 + b * (y - x**2) ** 2 + 1
+
+
+if MAIN:
+    plot_fn(rosenbrocks_banana_func, x_range=(-2, 2), y_range=(-1, 3), log_scale=True)
+
+# %%
+
+
+class SGD:
+    def __init__(self, params, **kwargs):
+        """Implements SGD with momentum.
+
+        Accepts parameters in groups, or an iterable.
+
+        Like the PyTorch version, but assume nesterov=False, maximize=False, and dampening=0
+                https://pytorch.org/docs/stable/generated/torch.optim.SGD.html#torch.optim.SGD
+        """
+
+        if not isinstance(params, (list, tuple)):
+            params = [{"params": params}]
+
+        # assuming params is a list of dictionaries, we make self.params also a list of dictionaries (with other kwargs filled in)
+        default_param_values = dict(momentum=0.0, weight_decay=0.0)
+
+        # creating a list of param groups, which we'll iterate over during the step function
+        self.param_groups = []
+        # creating a list of params, which we'll use to check whether a param has been added twice
+        params_to_check_for_duplicates = set()
+
+        for param_group in params:
+            # update param_group with kwargs passed in init; if this fails then update with the default values
+            param_group = {**default_param_values, **kwargs, **param_group}
+            # check that "lr" is defined (it should be either in kwargs, or in all of the param groups)
+            assert (
+                "lr" in param_group
+            ), "Error: one of the parameter groups didn't specify a value for required parameter `lr`."
+            # set the "params" and "gs" in param groups (note that we're storing 'gs' within each param group, rather than as self.gs)
+            param_group["params"] = list(param_group["params"])
+            param_group["gs"] = [t.zeros_like(p) for p in param_group["params"]]
+            self.param_groups.append(param_group)
+            # check that no params have been double counted
+            for param in param_group["params"]:
+                assert (
+                    param not in params_to_check_for_duplicates
+                ), "Error: some parameters appear in more than one parameter group"
+                params_to_check_for_duplicates.add(param)
+
+        self.t = 1
+
+    def zero_grad(self) -> None:
+        for param_group in self.param_groups:
+            for p in param_group["params"]:
+                p.grad = None
+
+    @t.inference_mode()
+    def step(self) -> None:
+        # loop through each param group
+        for i, param_group in enumerate(self.param_groups):
+            # get the parameters from the param_group
+            lmda = param_group["weight_decay"]
+            mu = param_group["momentum"]
+            gamma = param_group["lr"]
+            # loop through each parameter within each group
+            for j, (p, g) in enumerate(zip(param_group["params"], param_group["gs"])):
+                # Implement the algorithm in the pseudocode to get new values of params and g
+                new_g = p.grad
+                if lmda != 0:
+                    new_g = new_g + (lmda * p)
+                if mu > 0 and self.t > 1:
+                    new_g = (mu * g) + new_g
+                # Update params (remember, this must be inplace)
+                param_group["params"][j] -= gamma * new_g
+                # Update g
+                self.param_groups[i]["gs"][j] = new_g
+        self.t += 1
+
+
+if MAIN:
+    tests.test_sgd_param_groups(SGD)
+
+# %% 2️⃣ WEIGHTS AND BIASES
+
+
 def get_cifar(subset: int = 1):
     cifar_trainset = datasets.CIFAR10(
         root="./data", train=True, download=True, transform=IMAGENET_TRANSFORM
@@ -418,8 +505,6 @@ def get_cifar(subset: int = 1):
     return cifar_trainset, cifar_testset
 
 
-# %%
-
 if MAIN:
     cifar_trainset, cifar_testset = get_cifar()
 
@@ -433,6 +518,8 @@ if MAIN:
     )
 
 # %%
+
+
 if MAIN:
     cifar_trainset, cifar_testset = get_cifar(subset=1)
     cifar_trainset_small, cifar_testset_small = get_cifar(subset=10)
@@ -466,6 +553,8 @@ class ResNetFinetuningArgs:
 
 
 # %%
+
+
 class LitResNet(pl.LightningModule):
     def __init__(self, args: ResNetFinetuningArgs):
         super().__init__()
@@ -515,6 +604,8 @@ class LitResNet(pl.LightningModule):
 
 
 # %%
+
+
 if MAIN:
     args = ResNetFinetuningArgs(
         trainset=cifar_trainset_small, testset=cifar_testset_small
@@ -537,8 +628,9 @@ if MAIN:
         metrics, "Feature extraction with ResNet34"
     )
 
-
 # %%
+
+
 def test_resnet_on_random_input(n_inputs: int = 3):
     indices = np.random.choice(len(cifar_trainset), n_inputs).tolist()
     classes = [cifar_trainset.classes[cifar_trainset.targets[i]] for i in indices]
@@ -573,8 +665,12 @@ def test_resnet_on_random_input(n_inputs: int = 3):
 
 if MAIN:
     test_resnet_on_random_input()
+
 # %%
+
 import wandb
+
+# %%
 
 
 @dataclass
@@ -591,6 +687,8 @@ class ResNetFinetuningArgsWandb(ResNetFinetuningArgs):
 
 
 # %%
+
+
 if MAIN:
     args = ResNetFinetuningArgsWandb(
         trainset=cifar_trainset_small, testset=cifar_testset_small
@@ -607,8 +705,13 @@ if MAIN:
         model=model, train_dataloaders=args.trainloader, val_dataloaders=args.testloader
     )
     wandb.finish()
+
 # %%
+
+
 if MAIN:
+    sweep_config = dict()
+    # FLAT SOLUTION
     # YOUR CODE HERE - fill `sweep_config`
     sweep_config = dict(
         method="random",
@@ -622,8 +725,14 @@ if MAIN:
     # FLAT SOLUTION END
 
     tests.test_sweep_config(sweep_config)
+
 # %%
-def train() -> None:
+
+# (2) Define a training function which takes no args, and uses `wandb.config` to get hyperparams
+
+
+def train():
+    # Define hyperparameters, override some with values from wandb.config
     args = ResNetFinetuningArgsWandb(
         trainset=cifar_trainset_small, testset=cifar_testset_small
     )
@@ -646,8 +755,29 @@ def train() -> None:
 
 
 # %%
+
+
 if MAIN:
-    wandb.init()
-    sweep_id = wandb.sweep(sweep=sweep_config, project='day4-resnet-sweep')
-    wandb.agent(sweep_id=sweep_id, function=train, count=3)
+    sweep_id = wandb.sweep(sweep=sweep_config, project="day4-resnet-sweep")
+    wandb.agent(sweep_id=sweep_id, function=train, count=15)
+
+# %% 3️⃣ BONUS
+
+# Load from checkpoint
+
+if MAIN:
+    trained_model = LitResNet.load_from_checkpoint(
+        trainer.checkpoint_callback.best_model_path, args=trainer.model.args
+    )
+
+    # Check models are identical
+    assert all(
+        [
+            (p1.to(device) == p2.to(device)).all()
+            for p1, p2 in zip(
+                model.resnet.parameters(), trained_model.resnet.parameters()
+            )
+        ]
+    )
+
 # %%
